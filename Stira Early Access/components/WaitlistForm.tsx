@@ -15,6 +15,7 @@ export const WaitlistForm: React.FC = () => {
     setStatus('loading');
 
     try {
+      // 📨 1) Send data to Google Sheets via Apps Script
       await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -28,14 +29,24 @@ export const WaitlistForm: React.FC = () => {
         })
       });
 
+      // 💌 2) Trigger welcome email via Vercel Serverless Function + Resend
+      fetch("https://stira.vercel.app/api/send-welcome-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+
+      // 🎉 3) Update UI
       setStatus('success');
       setEmail('');
+      
     } catch (error) {
       console.error("Submission error:", error);
       setStatus('error');
     }
   };
 
+  // 🎉 Success UI
   if (status === 'success') {
     return (
       <div className="flex flex-col items-center justify-center p-8 bg-green-50 border border-green-100 rounded-2xl animate-fade-in text-center max-w-md mx-auto">
@@ -54,6 +65,7 @@ export const WaitlistForm: React.FC = () => {
     );
   }
 
+  // 🧾 Form UI
   return (
     <form id="waitlist-form" onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 w-full max-w-md mx-auto">
       <div className="relative flex-grow">
@@ -77,8 +89,11 @@ export const WaitlistForm: React.FC = () => {
         <ArrowRight size={18} className="ml-2" />
       </Button>
       {status === 'error' && (
-        <p className="text-red-500 text-xs text-center mt-2 w-full absolute -bottom-6">Something went wrong. Please try again.</p>
+        <p className="text-red-500 text-xs text-center mt-2 w-full absolute -bottom-6">
+          Something went wrong. Please try again.
+        </p>
       )}
     </form>
   );
 };
+
