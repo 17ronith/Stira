@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Button } from './Button';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 
-// IMPORTANT: Replace this with your actual Google Apps Script Web App URL
-const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL';
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzBgk3dvEaEvDTDMDklhaAq-Ymit0k3ya1_ZNNQ2H_PudXPvDGJuN-ZLMkZdfNqjR3FgQ/exec';
 
 export const WaitlistForm: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -14,44 +13,25 @@ export const WaitlistForm: React.FC = () => {
     if (!email) return;
     
     setStatus('loading');
-    
-    // Check if the URL is still the placeholder.
-    // If it is, we simulate a successful submission for demonstration purposes.
-    if (APPS_SCRIPT_URL === 'YOUR_APPS_SCRIPT_URL') {
-      setTimeout(() => {
-        console.log("Simulating submission to: " + APPS_SCRIPT_URL);
-        console.log("Payload:", { email, source: 'stira_landing_page' });
-        setStatus('success');
-        setEmail('');
-      }, 1500);
-      return;
-    }
 
     try {
-      const response = await fetch(APPS_SCRIPT_URL, {
+      await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        // 'text/plain' is often more reliable for CORS in Apps Script simple triggers, 
-        // but we'll use application/json as requested.
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email, 
-          source: 'stira_landing_page',
-          timestamp: new Date().toISOString()
+        body: JSON.stringify({
+          email,
+          platform: "web",
+          source: "stira_landing_page",
+          notes: "",
+          referral: ""
         })
       });
 
-      const data = await response.json();
-
-      if (data.status === 'ok' || response.ok) {
-        setStatus('success');
-        setEmail('');
-      } else {
-        setStatus('error');
-      }
+      setStatus('success');
+      setEmail('');
     } catch (error) {
       console.error("Submission error:", error);
-      // In many CORS no-cors scenarios with Apps Script, the fetch might fail or return opaque responses.
-      // If you experience issues, try changing mode to 'no-cors' or Content-Type to 'text/plain'.
       setStatus('error');
     }
   };
