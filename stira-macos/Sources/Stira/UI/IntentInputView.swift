@@ -57,3 +57,14 @@ struct IntentInputView: View {
         .frame(minWidth: 480, minHeight: 240)
     }
 }
+
+#Preview("Idle") {
+    IntentInputView()
+        .environmentObject(SessionManager())
+}
+
+#Preview("With text") {
+    let view = IntentInputView()
+    return view
+        .environmentObject(SessionManager())
+}

@@ -111,3 +111,24 @@ struct EscapeHatchView: View {
         }
     }
 }
+
+#Preview("Countdown") {
+    let controller = EscapeHatchController()
+    controller.state = .countdown(remaining: 18)
+    return EscapeHatchView(controller: controller)
+        .environmentObject(SessionManager())
+}
+
+#Preview("Reason entry") {
+    let controller = EscapeHatchController()
+    controller.state = .reasonEntry
+    return EscapeHatchView(controller: controller)
+        .environmentObject(SessionManager())
+}
+
+#Preview("Granted") {
+    let controller = EscapeHatchController()
+    controller.state = .granted
+    return EscapeHatchView(controller: controller)
+        .environmentObject(SessionManager())
+}

@@ -81,3 +81,10 @@ struct SessionStatusView: View {
         }
     }
 }
+
+#Preview {
+    let sm = SessionManager()
+    sm.sessionStartTime = Date().addingTimeInterval(-137)
+    return SessionStatusView()
+        .environmentObject(sm)
+}
