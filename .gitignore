@@ -10,3 +10,7 @@ DerivedData/
 dist/
 .env
 *.log
+# Local machine-specific Claude Code permissions — never commit
+.claude/settings.local.json
+# Agent council runtime job artifacts
+.agents/skills/agent-council/.jobs/

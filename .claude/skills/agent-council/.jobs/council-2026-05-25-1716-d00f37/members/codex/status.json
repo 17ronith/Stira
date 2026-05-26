@@ -1,0 +1,10 @@
+{
+  "member": "codex",
+  "state": "done",
+  "message": null,
+  "finishedAt": "2026-05-25T17:18:02.357Z",
+  "command": "codex exec",
+  "exitCode": 0,
+  "signal": null,
+  "pid": 19683
+}

@@ -31,7 +31,7 @@ async function applyDNRRules(rules: DNRRule[]): Promise<void> {
   const removeRuleIds = existing.map((r) => r.id);
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds,
-    addRules: rules,
+    addRules: rules as unknown as chrome.declarativeNetRequest.Rule[],
   });
 }
 
