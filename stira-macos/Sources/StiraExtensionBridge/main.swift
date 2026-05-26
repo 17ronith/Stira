@@ -6,56 +6,43 @@ import Foundation
 
 // MARK: - Chrome Native Messaging I/O
 
-func readMessage() -> [String: Any]? {
-    // Read 4-byte little-endian length prefix
-    var lengthBytes = [UInt8](repeating: 0, count: 4)
-    let read0 = FileHandle.standardInput.availableData
-    _ = read0 // warm up (unused)
-
-    var lengthData = Data(count: 4)
+func readExactly(_ count: Int) -> Data? {
+    var buffer = Data(count: count)
     var totalRead = 0
-
-    while totalRead < 4 {
-        let chunk = FileHandle.standardInput.availableData
-        if chunk.isEmpty {
-            // Try blocking read
-            guard let c = try? FileHandle.standardInput.read(upToCount: 4 - totalRead), !c.isEmpty else {
-                return nil
-            }
-            for (i, byte) in c.enumerated() {
-                lengthData[totalRead + i] = byte
-            }
-            totalRead += c.count
-        } else {
-            let needed = min(4 - totalRead, chunk.count)
-            for i in 0..<needed {
-                lengthData[totalRead + i] = chunk[i]
-            }
-            totalRead += needed
+    while totalRead < count {
+        let bytesRead = buffer.withUnsafeMutableBytes { ptr in
+            Foundation.read(STDIN_FILENO, ptr.baseAddress! + totalRead, count - totalRead)
         }
+        if bytesRead <= 0 { return nil }
+        totalRead += bytesRead
     }
+    return buffer
+}
 
-    lengthBytes = Array(lengthData)
-    let length = Int(lengthBytes[0])
-        | (Int(lengthBytes[1]) << 8)
-        | (Int(lengthBytes[2]) << 16)
-        | (Int(lengthBytes[3]) << 24)
-
-    guard length > 0, length < 1_048_576 else { return nil }
-
-    var messageData = Data()
-    var bytesRemaining = length
-
-    while bytesRemaining > 0 {
-        guard let chunk = try? FileHandle.standardInput.read(upToCount: bytesRemaining),
-              !chunk.isEmpty else {
-            return nil
-        }
-        messageData.append(chunk)
-        bytesRemaining -= chunk.count
+// Issue 5: Three-state return:
+//   .none          → EOF / clean shutdown → caller should exit
+//   .some(.none)   → parse / length error → caller should log and continue
+//   .some(.some)   → valid message
+func readMessage() -> [String: Any]?? {
+    guard let lenBytes = readExactly(4) else {
+        // EOF on the length bytes — clean shutdown
+        return .some(nil)
     }
-
-    return (try? JSONSerialization.jsonObject(with: messageData)) as? [String: Any]
+    let length = lenBytes.withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+    guard length > 0, length < 1_000_000 else {
+        fputs("[StiraExtensionBridge] invalid message length: \(length)\n", stderr)
+        // Invalid length — skip and keep looping (outer nil = continue)
+        return nil
+    }
+    guard let body = readExactly(Int(length)) else {
+        // EOF mid-message — treat as shutdown
+        return .some(nil)
+    }
+    guard let msg = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+        fputs("[StiraExtensionBridge] JSON parse error — skipping frame\n", stderr)
+        return nil
+    }
+    return .some(msg)
 }
 
 func writeMessage(_ dict: [String: Any]) {
@@ -115,28 +102,39 @@ func extractUrlRules(from policy: [String: Any]) -> [[String: Any]] {
     return result
 }
 
+// MARK: - Message Handling
+
+func handleMessage(_ message: [String: Any]) {
+    guard let type = message["type"] as? String else { return }
+
+    switch type {
+    case "get_policy":
+        if let policy = readActivePolicy() {
+            let rules = extractUrlRules(from: policy)
+            writeMessage(["type": "policy", "rules": rules])
+        } else {
+            writeMessage(["type": "session_ended"])
+        }
+
+    default:
+        writeMessage(["type": "error", "message": "Unknown message type: \(type)"])
+    }
+}
+
 // MARK: - Main Loop
 
 func runLoop() {
     while true {
-        guard let message = readMessage() else {
-            // stdin closed — exit cleanly
+        switch readMessage() {
+        case .none:
+            // Parse / length error — log and continue
+            fputs("[StiraExtensionBridge] skipping malformed message\n", stderr)
+            continue
+        case .some(.none):
+            // EOF — exit cleanly
             exit(0)
-        }
-
-        guard let type = message["type"] as? String else { continue }
-
-        switch type {
-        case "get_policy":
-            if let policy = readActivePolicy() {
-                let rules = extractUrlRules(from: policy)
-                writeMessage(["type": "policy", "rules": rules])
-            } else {
-                writeMessage(["type": "session_ended"])
-            }
-
-        default:
-            writeMessage(["type": "error", "message": "Unknown message type: \(type)"])
+        case .some(.some(let message)):
+            handleMessage(message)
         }
     }
 }

@@ -48,7 +48,9 @@ struct SessionStatusView: View {
 
             VStack(spacing: 10) {
                 Button(action: {
-                    sessionManager.requestEscapeHatch(target: "unknown")
+                    // Issue 8: use last-known blocked bundle id as the scoped exception target
+                    let target = sessionManager.lastHermesEvent?.bundleId ?? "manual"
+                    sessionManager.requestEscapeHatch(target: target)
                 }) {
                     Text("I need a break")
                         .frame(maxWidth: .infinity)

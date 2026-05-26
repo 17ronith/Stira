@@ -72,7 +72,7 @@ final class HermesSocket: ObservableObject {
     }()
 
     private var socketFd: Int32 = -1
-    private var continuations: [AsyncStream<HermesEvent>.Continuation] = []
+    private var _eventsContinuation: AsyncStream<HermesEvent>.Continuation?
 
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -86,22 +86,42 @@ final class HermesSocket: ObservableObject {
 
     // MARK: - Public API
 
-    var events: AsyncStream<HermesEvent> {
-        AsyncStream { continuation in
-            Task { @MainActor in
-                self.continuations.append(continuation)
-            }
-        }
+    // Issue 1: regular stored var, initialised in init so events are never missed
+    var events: AsyncStream<HermesEvent>
+
+    init() {
+        let (stream, continuation) = AsyncStream.makeStream(of: HermesEvent.self)
+        self.events = stream
+        self._eventsContinuation = continuation
+    }
+
+    // Issue 1: create a fresh stream for each new session so second sessions work
+    private func resetEventStream() {
+        _eventsContinuation?.finish()
+        let (stream, continuation) = AsyncStream.makeStream(of: HermesEvent.self)
+        self.events = stream
+        self._eventsContinuation = continuation
     }
 
     func startSession(_ taskSpec: HermesTaskSpec) async throws {
+        // Issue 1: reset stream before each session
+        resetEventStream()
+
         try await connectWithRetry()
 
         let message = StartSessionMessage(type: "start_session", policy: taskSpec)
         let data = try encoder.encode(message)
         var line = data
         line.append(0x0A) // newline
-        try write(data: line)
+
+        // Issue 3B: close fd if write fails after connect
+        do {
+            try write(data: line)
+        } catch {
+            Darwin.close(socketFd)
+            socketFd = -1
+            throw error
+        }
 
         // Start reading events in background
         Task.detached { [weak self] in
@@ -111,13 +131,24 @@ final class HermesSocket: ObservableObject {
 
     func stopSession(sessionId: String) async throws {
         guard socketFd >= 0 else { return }
+
+        // Issue 4: shut down the read side so readEventLoop sees EOF and exits
+        // before the fd is closed and potentially recycled
+        Darwin.shutdown(socketFd, SHUT_RD)
+
+        // Issue 3A: always close fd via defer even if write throws
+        defer {
+            if socketFd >= 0 {
+                Darwin.close(socketFd)
+                socketFd = -1
+            }
+        }
+
         let message = StopSessionMessage(type: "stop_session", sessionId: sessionId)
         let data = try encoder.encode(message)
         var line = data
         line.append(0x0A)
         try write(data: line)
-        Darwin.close(socketFd)
-        socketFd = -1
     }
 
     // MARK: - Connection
@@ -175,6 +206,10 @@ final class HermesSocket: ObservableObject {
             throw NSError(domain: "HermesSocket", code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "connect() failed: \(errno)"])
         }
 
+        // Issue 2: suppress SIGPIPE so a dead Hermes doesn't kill the Swift process
+        var nosigpipe: Int32 = 1
+        Darwin.setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &nosigpipe, socklen_t(MemoryLayout<Int32>.size))
+
         socketFd = fd
     }
 
@@ -189,8 +224,13 @@ final class HermesSocket: ObservableObject {
             let written = remaining.withUnsafeBytes { ptr in
                 Darwin.write(socketFd, ptr.baseAddress!, ptr.count)
             }
-            if written <= 0 {
+            if written == -1 {
+                // Issue (minor): retry on EINTR, throw on all other errors
+                if errno == EINTR { continue }
                 throw NSError(domain: "HermesSocket", code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "write() failed: \(errno)"])
+            }
+            if written == 0 {
+                throw NSError(domain: "HermesSocket", code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "write() returned 0"])
             }
             remaining = remaining.dropFirst(written)
         }
@@ -222,21 +262,17 @@ final class HermesSocket: ObservableObject {
 
                 if let event = try? decoder.decode(HermesEvent.self, from: lineData) {
                     let capturedEvent = event
-                    await MainActor.run {
-                        for continuation in self.continuations {
-                            continuation.yield(capturedEvent)
-                        }
+                    _ = await MainActor.run {
+                        self._eventsContinuation?.yield(capturedEvent)
                     }
                 }
             }
         }
 
-        // Signal end to all continuations
+        // Signal end to the continuation (but do NOT finish — resetEventStream handles lifecycle)
         await MainActor.run {
-            for continuation in continuations {
-                continuation.finish()
-            }
-            continuations.removeAll()
+            _eventsContinuation?.finish()
+            _eventsContinuation = nil
         }
     }
 }

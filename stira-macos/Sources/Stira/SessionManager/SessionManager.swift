@@ -23,7 +23,6 @@ final class SessionManager: ObservableObject {
     let escapeHatchController = EscapeHatchController()
 
     private var hermesSocket = HermesSocket()
-    private var extensionBridge = ExtensionBridge()
     private var auditLog: [HermesEvent] = []
 
     // MARK: - Session Lifecycle
@@ -44,7 +43,8 @@ final class SessionManager: ObservableObject {
 
             let taskSpec = buildTaskSpec(from: policy)
             try await hermesSocket.startSession(taskSpec)
-            extensionBridge.pushPolicy(policy)
+            // PolicyStore is the sole writer of active-policy.json (Issue 6).
+            // No ExtensionBridge call needed here.
 
             sessionStartTime = Date()
             state = .active
@@ -60,6 +60,8 @@ final class SessionManager: ObservableObject {
                 }
             }
         } catch {
+            // Issue 7: clear stale policy so the browser extension doesn't keep blocking
+            policyStore.clearPolicy()
             errorMessage = "Failed to start session: \(error.localizedDescription)"
             state = .idle
         }
@@ -68,11 +70,12 @@ final class SessionManager: ObservableObject {
     func endSession() async {
         state = .ending
 
-        let sessionId = policyStore.activePolicy?.sessionId ?? ""
+        let sessionId = policyStore.activePolicy?.sessionId ?? UUID().uuidString
         try? await hermesSocket.stopSession(sessionId: sessionId)
-        extensionBridge.clearPolicy()
+        // PolicyStore.clearPolicy() removes active-policy.json (Issue 6).
+        // No separate extensionBridge.clearPolicy() call needed.
+        writeAuditLog(sessionId: sessionId)
         policyStore.clearPolicy()
-        writeAuditLog()
 
         sessionStartTime = nil
         lastHermesEvent = nil
@@ -88,15 +91,6 @@ final class SessionManager: ObservableObject {
     func handleEscapeHatchGrant() {
         guard let exception = escapeHatchController.submitReason() else { return }
         policyStore.applyException(exception)
-
-        // Notify Hermes about the exception (best-effort, fire-and-forget)
-        if let policy = policyStore.activePolicy {
-            let taskSpec = buildTaskSpec(from: policy)
-            Task { [weak self] in
-                try? await self?.hermesSocket.startSession(taskSpec)
-            }
-        }
-
         state = .active
     }
 
@@ -175,18 +169,17 @@ final class SessionManager: ObservableObject {
         )
     }
 
-    private func writeAuditLog() {
+    private func writeAuditLog(sessionId: String) {
         guard !auditLog.isEmpty else { return }
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-        let logsDir = appSupport.appendingPathComponent("Stira/audit-logs")
-        let sessionId = policyStore.activePolicy?.sessionId ?? UUID().uuidString
-        let logFile = logsDir.appendingPathComponent("\(sessionId).jsonl")
+        let sessionDir = appSupport.appendingPathComponent("Stira/sessions/\(sessionId)")
+        let logFile = sessionDir.appendingPathComponent("audit.jsonl")
 
         do {
-            try FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             let lines = try auditLog.map { event -> String in
                 let data = try encoder.encode(event)
