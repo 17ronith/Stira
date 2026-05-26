@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "lib": ["ES2020"],
+    "outDir": "dist",
+    "strict": true,
+    "noImplicitAny": true
+  },
+  "include": ["background/**/*.ts", "rules/**/*.ts"],
+  "exclude": ["tests/**", "node_modules"]
+}

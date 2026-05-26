@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Stira",
+  "version": "0.1.0",
+  "description": "Stira focus enforcement",
+  "permissions": [
+    "declarativeNetRequest",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "declarative_net_request": {
+    "rule_resources": []
+  }
+}
