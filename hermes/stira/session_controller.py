@@ -91,10 +91,21 @@ class SessionController:
         )
         self._monitor = AppMonitor(on_app_opened=on_app_opened)
 
-        self._suppressor.start()
-        self._monitor.start()
+        started = []
+        try:
+            self._suppressor.start()
+            started.append(self._suppressor)
+            self._monitor.start()
+            started.append(self._monitor)
+            self._emitter.emit_session_started(self.session_id)
+        except Exception:
+            for skill in reversed(started):
+                try:
+                    skill.stop()
+                except Exception:
+                    pass
+            raise
 
-        self._emitter.emit_session_started(self.session_id)
         logger.info("Session %s started", self.session_id)
 
     def stop(self) -> None:

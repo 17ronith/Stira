@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import IO
 
@@ -25,16 +26,18 @@ class EventEmitter:
 
     def __init__(self, writer: IO[str]) -> None:
         self._writer = writer
+        self._lock = threading.Lock()
 
     def _emit(self, event: dict) -> None:
         """Serialise event to JSON and write with a trailing newline."""
         line = json.dumps(event) + "\n"
-        self._writer.write(line)
-        if hasattr(self._writer, "flush"):
+        with self._lock:
             try:
-                self._writer.flush()
-            except Exception:
-                pass
+                self._writer.write(line)
+                if hasattr(self._writer, "flush"):
+                    self._writer.flush()
+            except (BrokenPipeError, OSError) as e:
+                logging.warning("EventEmitter: write failed: %s", e)
 
     def emit_session_started(self, session_id: str) -> None:
         self._emit({

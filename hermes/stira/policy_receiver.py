@@ -83,7 +83,6 @@ class PolicyReceiver:
 
     def _serve_connection(self, conn: socket.socket) -> None:
         """Handle a single client connection, reading newline-delimited JSON."""
-        buffer = ""
         try:
             with conn.makefile("r", encoding="utf-8") as f:
                 for line in f:

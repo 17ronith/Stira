@@ -17,6 +17,12 @@ import signal
 import sys
 from pathlib import Path
 
+try:
+    import AppKit
+    HAS_APPKIT = True
+except ImportError:
+    HAS_APPKIT = False
+
 DEFAULT_SOCKET_PATH = os.path.expanduser(
     "~/Library/Application Support/Stira/hermes.sock"
 )
@@ -68,17 +74,9 @@ def main() -> None:
     from stira.session_controller import SessionController
 
     # _state holds mutable references shared across connection and callback closures
-    _state: dict = {"controller": None, "emitter": None}
+    _state: dict = {"controller": None}
 
-    def _make_emitter_for_conn(conn_writer) -> EventEmitter:
-        return EventEmitter(writer=conn_writer)
-
-    # Initialise with a stderr fallback so callbacks are always safe to call
-    # even before the first client connects.
-    _state["emitter"] = EventEmitter(writer=sys.stderr)
-
-    def on_start_session(task_spec: dict) -> None:
-        emitter: EventEmitter = _state["emitter"]
+    def on_start_session(task_spec: dict, emitter: EventEmitter) -> None:
         active_controller = _state["controller"]
         if active_controller is not None:
             logger.warning("New session requested while session active — stopping old session")
@@ -125,22 +123,37 @@ def main() -> None:
     # Override _serve_connection to wire a per-connection EventEmitter before
     # dispatching any messages.  The write end of the socket is opened as a
     # separate text file so JSON events are written back to the same client.
-    _original_serve_connection = receiver._serve_connection
+    # The emitter is created fresh per connection and passed directly into
+    # on_start_session — no shared global state.
+    _original_dispatch = receiver._dispatch
 
     def _serve_connection_with_emitter(conn) -> None:
         """Wrap the default serve loop, binding a fresh EventEmitter to this conn."""
         conn_writer = conn.makefile("w", encoding="utf-8")
-        _state["emitter"] = _make_emitter_for_conn(conn_writer)
+        conn_emitter = EventEmitter(writer=conn_writer)
+
+        def _dispatch_with_emitter(message: dict) -> None:
+            msg_type = message.get("type")
+            if msg_type == "start_session":
+                task_spec = message.get("policy", {})
+                on_start_session(task_spec, conn_emitter)
+            else:
+                _original_dispatch(message)
+
+        receiver._dispatch = _dispatch_with_emitter
         try:
-            _original_serve_connection(conn)
+            # Read lines from the connection and dispatch each one
+            with conn.makefile("r", encoding="utf-8") as f:
+                for line in f:
+                    receiver._handle_raw_line(line)
+        except Exception as exc:
+            logger.warning("Error serving connection: %s", exc)
         finally:
-            # Restore stderr fallback when this client disconnects so future
-            # emit calls don't write to a closed file.
+            receiver._dispatch = _original_dispatch
             try:
                 conn_writer.close()
             except Exception:
                 pass
-            _state["emitter"] = EventEmitter(writer=sys.stderr)
 
     receiver._serve_connection = _serve_connection_with_emitter
 
@@ -163,9 +176,15 @@ def main() -> None:
 
     logger.info("Hermes ready. Waiting for connections on %s", args.socket_path)
 
-    # Block main thread — SIGTERM or KeyboardInterrupt will exit
+    # Block main thread — SIGTERM or KeyboardInterrupt will exit.
+    # NSRunLoop must spin on the main thread for NSWorkspace notifications
+    # (app_suppressor, app_monitor) to fire.  Fall back to signal.pause()
+    # when pyobjc is not available (e.g. in CI / non-macOS environments).
     try:
-        signal.pause()
+        if HAS_APPKIT:
+            AppKit.NSRunLoop.currentRunLoop().run()
+        else:
+            signal.pause()
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt — shutting down")
         ctrl = _state.get("controller")

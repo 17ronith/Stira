@@ -120,37 +120,6 @@ class TestSessionControllerInstantiation:
 class TestSessionControllerLifecycle:
     """Tests for start() and stop() method behaviour."""
 
-    def _make_controller_with_mocked_skills(self, task_spec=None):
-        """Return (controller, emitter, mock_suppressor, mock_killer, mock_monitor)."""
-        from stira.session_controller import SessionController
-
-        if task_spec is None:
-            task_spec = VALID_TASK_SPEC
-
-        emitter = make_mock_emitter()
-
-        mock_suppressor_cls = MagicMock()
-        mock_killer_cls = MagicMock()
-        mock_monitor_cls = MagicMock()
-
-        mock_suppressor = MagicMock()
-        mock_killer = MagicMock()
-        mock_monitor = MagicMock()
-
-        mock_suppressor_cls.return_value = mock_suppressor
-        mock_killer_cls.return_value = mock_killer
-        mock_monitor_cls.return_value = mock_monitor
-
-        with patch("stira.session_controller.AppSuppressor", mock_suppressor_cls), \
-             patch("stira.session_controller.FocusKiller", mock_killer_cls), \
-             patch("stira.session_controller.AppMonitor", mock_monitor_cls):
-            controller = SessionController(task_spec=task_spec, emitter=emitter)
-            controller._suppressor_cls = mock_suppressor_cls
-            controller._killer_cls = mock_killer_cls
-            controller._monitor_cls = mock_monitor_cls
-
-        return controller, emitter, mock_suppressor, mock_killer, mock_monitor
-
     def test_start_calls_emit_session_started(self):
         """SessionController.start() should call emitter.emit_session_started()."""
         from stira.session_controller import SessionController
@@ -268,3 +237,46 @@ class TestSessionControllerLifecycle:
         assert "com.twitter.twitter" in flat or any(
             "com.twitter.twitter" in str(a) for a in all_args
         )
+
+    def test_on_blocked_callback_kills_focus_and_emits(self):
+        """When AppSuppressor fires on_blocked, FocusKiller.kill_focus is called and focus_killed is emitted."""
+        from stira.session_controller import SessionController
+
+        emitter = make_mock_emitter()
+        mock_suppressor = MagicMock()
+        mock_killer = MagicMock()
+        mock_monitor = MagicMock()
+
+        mock_suppressor_cls = MagicMock(return_value=mock_suppressor)
+        mock_killer_cls = MagicMock(return_value=mock_killer)
+        mock_monitor_cls = MagicMock(return_value=mock_monitor)
+
+        # Capture the on_blocked callback passed to AppSuppressor
+        captured_on_blocked = {}
+
+        def capture_suppressor(**kwargs):
+            captured_on_blocked["cb"] = kwargs.get("on_blocked")
+            return mock_suppressor
+
+        mock_suppressor_cls.side_effect = capture_suppressor
+
+        with patch("stira.session_controller.AppSuppressor", mock_suppressor_cls), \
+             patch("stira.session_controller.FocusKiller", mock_killer_cls), \
+             patch("stira.session_controller.AppMonitor", mock_monitor_cls):
+            controller = SessionController(task_spec=VALID_TASK_SPEC, emitter=emitter)
+            # Patch _get_pid_for_bundle to return a known PID
+            controller._get_pid_for_bundle = lambda bundle_id: 1234
+            controller.start()
+
+        # Verify the callback was captured
+        assert "cb" in captured_on_blocked, "on_blocked callback was not passed to AppSuppressor"
+        on_blocked = captured_on_blocked["cb"]
+
+        # Fire the callback as if a blocked app came to the foreground
+        on_blocked("com.twitter.twitter")
+
+        # kill_focus must have been called with the PID
+        mock_killer.kill_focus.assert_called_once_with(1234)
+
+        # focus_killed event must have been emitted
+        emitter.emit_focus_killed.assert_called_once_with("session-abc", "com.twitter.twitter")
