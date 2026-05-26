@@ -13,7 +13,24 @@ from typing import Callable
 try:
     import AppKit
     import Cocoa
+    import objc
     HAS_PYOBJC = True
+
+    class _AppMonitorObserver(Cocoa.NSObject):
+        def initWithMonitor_(self, monitor):
+            self = objc.super(_AppMonitorObserver, self).init()
+            if self is not None:
+                self._monitor = monitor
+            return self
+
+        def appEvent_(self, notification):
+            app_info = notification.userInfo()
+            app = app_info.get(AppKit.NSWorkspaceApplicationKey)
+            if app is not None:
+                bid = app.bundleIdentifier()
+                if bid:
+                    self._monitor._handle_app_event(bid)
+
 except ImportError:
     HAS_PYOBJC = False
 
@@ -49,22 +66,7 @@ class AppMonitor:
         workspace = AppKit.NSWorkspace.sharedWorkspace()
         nc = workspace.notificationCenter()
 
-        class _Observer(Cocoa.NSObject):
-            def initWithMonitor_(self, monitor):
-                self = Cocoa.NSObject.init(self)
-                if self is not None:
-                    self._monitor = monitor
-                return self
-
-            def appEvent_(self, notification):
-                app_info = notification.userInfo()
-                app = app_info.get(AppKit.NSWorkspaceApplicationKey)
-                if app is not None:
-                    bid = app.bundleIdentifier()
-                    if bid:
-                        self._monitor._handle_app_event(bid)
-
-        observer = _Observer.alloc().initWithMonitor_(self)
+        observer = _AppMonitorObserver.alloc().initWithMonitor_(self)
         self._observer = observer
 
         for notif_name in [

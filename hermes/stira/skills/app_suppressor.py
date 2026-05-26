@@ -13,7 +13,24 @@ from typing import Callable, List
 try:
     import AppKit
     import Cocoa
+    import objc
     HAS_PYOBJC = True
+
+    class _AppSuppressorObserver(Cocoa.NSObject):
+        def initWithSuppressor_(self, suppressor):
+            self = objc.super(_AppSuppressorObserver, self).init()
+            if self is not None:
+                self._suppressor = suppressor
+            return self
+
+        def appDidActivate_(self, notification):
+            app_info = notification.userInfo()
+            app = app_info.get(AppKit.NSWorkspaceApplicationKey)
+            if app is not None:
+                bid = app.bundleIdentifier()
+                if bid and bid in self._suppressor.blocked_bundle_ids:
+                    self._suppressor._handle_blocked_activation(bid)
+
 except ImportError:
     HAS_PYOBJC = False
 
@@ -72,23 +89,7 @@ class AppSuppressor:
 
     def _objc_observer(self):
         """Return an Objective-C observer object. Requires pyobjc."""
-        # Build a minimal NSObject subclass as the observer
-        class _Observer(Cocoa.NSObject):
-            def initWithSuppressor_(self, suppressor):
-                self = Cocoa.NSObject.init(self)
-                if self is not None:
-                    self._suppressor = suppressor
-                return self
-
-            def appDidActivate_(self, notification):
-                app_info = notification.userInfo()
-                app = app_info.get(AppKit.NSWorkspaceApplicationKey)
-                if app is not None:
-                    bid = app.bundleIdentifier()
-                    if bid and bid in self._suppressor.blocked_bundle_ids:
-                        self._suppressor._handle_blocked_activation(bid)
-
-        observer = _Observer.alloc().initWithSuppressor_(self)
+        observer = _AppSuppressorObserver.alloc().initWithSuppressor_(self)
         self._observer = observer
         return observer
 
