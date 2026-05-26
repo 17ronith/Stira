@@ -122,7 +122,7 @@ The mode is set per session as part of the policy object.
 ## MVP Scope
 
 ### What's In
-- Direct Codex API call for intent parsing
+- Ollama + qwen3:8b (localhost:11434) for intent parsing — local, no API key required
 - Policy schema — minimal but expressive, must support conditional exceptions from day one
 - Hermes modified to three core enforcement actions
 - Browser extension — URL rules only
@@ -144,7 +144,7 @@ The MVP acceptance criterion: user declares intent → environment visibly chang
 
 ### MVP Build Order
 1. Policy schema — define the JSON structure first. Everything depends on this.
-2. Intent → policy — Codex API call, test extensively with varied inputs before touching anything else.
+2. Intent → policy — Ollama/qwen3:8b call with constrained JSON decoding, test extensively with varied inputs before touching anything else.
 3. Hermes modification — strip to three core actions, wire policy object in.
 4. Browser extension — URL rules driven by the same policy object.
 5. UI — text field and session status. Build last.

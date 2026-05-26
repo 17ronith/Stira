@@ -12,5 +12,7 @@ dist/
 *.log
 # Local machine-specific Claude Code permissions — never commit
 .claude/settings.local.json
-# Agent council runtime job artifacts
+# Agent council runtime job artifacts (all skill host dirs)
 .agents/skills/agent-council/.jobs/
+.claude/skills/agent-council/.jobs/
+.codex/skills/agent-council/.jobs/
