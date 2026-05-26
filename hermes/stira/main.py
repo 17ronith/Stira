@@ -67,25 +67,19 @@ def main() -> None:
     from stira.policy_receiver import PolicyReceiver
     from stira.session_controller import SessionController
 
-    active_controller: SessionController | None = None
-    active_conn_writer = None
-
-    # We use a list so the inner callbacks can rebind via reference
-    _state: dict = {"controller": None}
+    # _state holds mutable references shared across connection and callback closures
+    _state: dict = {"controller": None, "emitter": None}
 
     def _make_emitter_for_conn(conn_writer) -> EventEmitter:
         return EventEmitter(writer=conn_writer)
 
-    # For simplicity at MVP, we emit events to stderr (same as logs) when no
-    # active connection writer is tracked. The full bidirectional connection
-    # is handled by the PolicyReceiver's connection loop.
-    import io
-    fallback_writer = sys.stderr
-
-    emitter = EventEmitter(writer=fallback_writer)
+    # Initialise with a stderr fallback so callbacks are always safe to call
+    # even before the first client connects.
+    _state["emitter"] = EventEmitter(writer=sys.stderr)
 
     def on_start_session(task_spec: dict) -> None:
-        nonlocal active_controller
+        emitter: EventEmitter = _state["emitter"]
+        active_controller = _state["controller"]
         if active_controller is not None:
             logger.warning("New session requested while session active — stopping old session")
             try:
@@ -96,7 +90,6 @@ def main() -> None:
         try:
             controller = SessionController(task_spec=task_spec, emitter=emitter)
             controller.start()
-            active_controller = controller
             _state["controller"] = controller
         except Exception as exc:
             logger.error("Failed to start session: %s", exc)
@@ -106,8 +99,7 @@ def main() -> None:
             )
 
     def on_stop_session(session_id: str) -> None:
-        nonlocal active_controller
-        ctrl = active_controller
+        ctrl = _state["controller"]
         if ctrl is None:
             logger.warning("stop_session received but no active session")
             return
@@ -120,7 +112,6 @@ def main() -> None:
             ctrl.stop()
         except Exception as exc:
             logger.error("Error stopping session: %s", exc)
-        active_controller = None
         _state["controller"] = None
 
     def on_unknown(message: dict) -> None:
@@ -130,6 +121,28 @@ def main() -> None:
     receiver.on_start_session = on_start_session
     receiver.on_stop_session = on_stop_session
     receiver.on_unknown = on_unknown
+
+    # Override _serve_connection to wire a per-connection EventEmitter before
+    # dispatching any messages.  The write end of the socket is opened as a
+    # separate text file so JSON events are written back to the same client.
+    _original_serve_connection = receiver._serve_connection
+
+    def _serve_connection_with_emitter(conn) -> None:
+        """Wrap the default serve loop, binding a fresh EventEmitter to this conn."""
+        conn_writer = conn.makefile("w", encoding="utf-8")
+        _state["emitter"] = _make_emitter_for_conn(conn_writer)
+        try:
+            _original_serve_connection(conn)
+        finally:
+            # Restore stderr fallback when this client disconnects so future
+            # emit calls don't write to a closed file.
+            try:
+                conn_writer.close()
+            except Exception:
+                pass
+            _state["emitter"] = EventEmitter(writer=sys.stderr)
+
+    receiver._serve_connection = _serve_connection_with_emitter
 
     # SIGTERM handler for clean shutdown
     def _handle_sigterm(signum, frame):
