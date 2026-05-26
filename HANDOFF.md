@@ -1,8 +1,8 @@
 # Stira MVP — Session Handoff
 
-**Date:** 2026-05-26  
+**Date:** 2026-05-27  
 **Branch:** master  
-**Last commit:** `4c97b5c` fix: thread safety, NSRunLoop, per-connection emitter, cleanup
+**Last commit:** `58a34dd` fix: resolve runtime bugs in Swift app — SIGPIPE, fd leaks, event stream lifecycle
 
 ---
 
@@ -10,10 +10,10 @@
 
 ```
 Read HANDOFF.md, then CLAUDE.md. We're building the Stira MVP using
-superpowers:subagent-driven-development. Tasks 1-4 are done (36/36 tests
-passing + 7/7 browser extension tests). Task 5 (SwiftUI Native App) is next
-— awaiting sign-off. Full task spec is in
-docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md under ## Task 5.
+superpowers:subagent-driven-development. Tasks 1-5 are done (43/43 tests
+passing). Task 6 (Installer + First-Run Flow) is next — awaiting sign-off.
+Full task spec is in docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md
+under ## Task 6.
 ```
 
 ---
@@ -24,10 +24,10 @@ docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md under ## Task 5.
 - [x] **Task 2** — Intent Engine: `intent_engine.py`, `prompt_builder.py` — 10/10 tests (20/20 total)
 - [x] **Task 3** — Hermes Modification: Unix socket server/emitter + 3 enforcement skills — 16/16 tests (36/36 total)
 - [x] **Task 4** — Browser Extension: Chrome MV3, `declarativeNetRequest`, path-level exceptions — 7/7 tests (43/43 total)
-- [ ] **Task 5** — SwiftUI Native App: intent input, session manager, escape hatch UX ← **NEXT (awaiting sign-off)**
-- [ ] **Task 6** — Installer + First-Run: Ollama bundle, qwen3:8b pull progress bar, Accessibility onboarding
+- [x] **Task 5** — SwiftUI Native App: intent input, session manager, escape hatch UX — `swift build` ✅
+- [ ] **Task 6** — Installer + First-Run: Ollama bundle, qwen3:8b pull progress bar, Accessibility onboarding ← **NEXT (awaiting sign-off)**
 
-**Total tests passing:** 43/43  
+**Total tests passing:** 43/43 (Swift app verified by clean `swift build`)  
 **Acceptance criterion:** 10-second test (intent → visible enforcement, one permission ask)
 
 ---
@@ -46,8 +46,8 @@ Local-first macOS focus app. User types intent in plain language → local LLM p
 | 2 | Intent Engine (Ollama + qwen3:8b constrained decoding) | ✅ Done |
 | 3 | Hermes Modification (Unix socket + 3 enforcement skills) | ✅ Done |
 | 4 | Browser Extension (Chrome MV3, declarativeNetRequest) | ✅ Done |
-| 5 | SwiftUI Native App (intent input, session manager, escape hatch) | ⏳ Next — awaiting sign-off |
-| 6 | Installer + First-Run Flow (Ollama bundle, model pull, permissions) | ⬜ Pending |
+| 5 | SwiftUI Native App (intent input, session manager, escape hatch) | ✅ Done |
+| 6 | Installer + First-Run Flow (Ollama bundle, model pull, permissions) | ⏳ Next — awaiting sign-off |
 
 **Tests:** 43/43 passing  
 ```bash
@@ -168,11 +168,36 @@ Thread-safe (threading.Lock). Writes newline-delimited JSON events back over soc
 
 ---
 
-## Task 5: What To Build Next (SwiftUI Native App)
+## What Task 5 Built
 
-**Read the full task spec first:** [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — search for `## Task 5`.
+### `stira-macos/Package.swift`
+Swift Package Manager with two `executableTarget`s: `Stira` (macOS 14+) and `StiraExtensionBridge`.
 
-**STOP after Task 5 for user sign-off before proceeding to Task 6.**
+### `stira-macos/Sources/Stira/App/StiraApp.swift`
+`@main App`. RAM check (< 8GB → alert + exit) in `.onAppear`. Switches between `IntentInputView` and `SessionStatusView` based on `sessionManager.state`. `EscapeHatchView` as an `.interactiveDismissDisabled` sheet when state == `.escapeHatch`.
+
+### `stira-macos/Sources/Stira/PolicyStore/PolicyStore.swift`
+`@MainActor ObservableObject`. Sole writer of `~/Library/Application Support/Stira/active-policy.json`. Methods: `setActivePolicy(_:)`, `clearPolicy()`, `applyException(_:)`.
+
+### `stira-macos/Sources/Stira/SessionManager/SessionManager.swift`
+`@MainActor ObservableObject`. State enum: `idle | starting | active | escapeHatch | ending`. Calls Ollama `/api/generate` (qwen3:8b, `stream: false`), validates as `StiraPolicy`, starts Hermes socket, drives escape hatch. Audit log written to `~/Library/Application Support/Stira/sessions/{session_id}/audit.jsonl`.
+
+### `stira-macos/Sources/Stira/SessionManager/EscapeHatchController.swift`
+`@MainActor ObservableObject`. State machine: `idle → countdown(remaining:) → reasonEntry → granted`. 30-second Timer countdown (uncancellable). Validates reason ≥ 20 chars. `submitReason() -> ScopedException?`.
+
+### `stira-macos/Sources/Stira/HermesSocket/HermesSocket.swift`
+Async POSIX Unix socket IPC. `SO_NOSIGPIPE` set. Per-session `AsyncStream<HermesEvent>` via `AsyncStream.makeStream()` — fresh stream each `startSession`. `Darwin.shutdown(SHUT_RD)` before close so `readEventLoop` exits cleanly. 10-retry connect with 500ms backoff.
+
+### `stira-macos/Sources/Stira/ExtensionBridge/ExtensionBridge.swift`
+No-op — `PolicyStore` is the sole writer of `active-policy.json`, which `StiraExtensionBridge` reads directly.
+
+### `stira-macos/Sources/Stira/UI/`
+- `IntentInputView.swift` — multiline TextField, "Start Session" button, ProgressView during parse, error display
+- `SessionStatusView.swift` — elapsed time, "End Session", "I need a break" (passes last Hermes bundle ID as target)
+- `EscapeHatchView.swift` — immovable countdown circle, neutral text, reason TextField with char count, Submit disabled until ≥ 20 chars
+
+### `stira-macos/Sources/StiraExtensionBridge/main.swift`
+Chrome native messaging host. POSIX blocking `read()` for 4-byte LE length prefix + JSON body. Reads `active-policy.json`, extracts URL rules, responds as `policy` or `session_ended`. Malformed frames skip-and-continue; EOF exits cleanly.
 
 ---
 
