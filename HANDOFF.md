@@ -10,10 +10,10 @@
 
 ```
 Read HANDOFF.md, then CLAUDE.md. We're building the Stira MVP using
-superpowers:subagent-driven-development. Tasks 1-3 are done (36/36 tests
-passing). Task 4 (Browser Extension) is next — awaiting sign-off. Full task
-spec is in docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md
-under ## Task 4.
+superpowers:subagent-driven-development. Tasks 1-4 are done (36/36 tests
+passing + 7/7 browser extension tests). Task 5 (SwiftUI Native App) is next
+— awaiting sign-off. Full task spec is in
+docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md under ## Task 5.
 ```
 
 ---
@@ -23,11 +23,11 @@ under ## Task 4.
 - [x] **Task 1** — Policy Schema: `stira-policy.schema.json`, `stira_policy.py`, `StiraPolicy.swift` — 10/10 tests
 - [x] **Task 2** — Intent Engine: `intent_engine.py`, `prompt_builder.py` — 10/10 tests (20/20 total)
 - [x] **Task 3** — Hermes Modification: Unix socket server/emitter + 3 enforcement skills — 16/16 tests (36/36 total)
-- [ ] **Task 4** — Browser Extension: Chrome MV3, `declarativeNetRequest`, path-level exceptions ← **NEXT (awaiting sign-off)**
-- [ ] **Task 5** — SwiftUI Native App: intent input, session manager, escape hatch UX
+- [x] **Task 4** — Browser Extension: Chrome MV3, `declarativeNetRequest`, path-level exceptions — 7/7 tests (43/43 total)
+- [ ] **Task 5** — SwiftUI Native App: intent input, session manager, escape hatch UX ← **NEXT (awaiting sign-off)**
 - [ ] **Task 6** — Installer + First-Run: Ollama bundle, qwen3:8b pull progress bar, Accessibility onboarding
 
-**Total tests passing:** 20/20  
+**Total tests passing:** 43/43  
 **Acceptance criterion:** 10-second test (intent → visible enforcement, one permission ask)
 
 ---
@@ -45,16 +45,18 @@ Local-first macOS focus app. User types intent in plain language → local LLM p
 | 1 | Policy Schema (JSON Schema + Python dataclass + Swift struct) | ✅ Done |
 | 2 | Intent Engine (Ollama + qwen3:8b constrained decoding) | ✅ Done |
 | 3 | Hermes Modification (Unix socket + 3 enforcement skills) | ✅ Done |
-| 4 | Browser Extension (Chrome MV3, declarativeNetRequest) | ⏳ Next — awaiting sign-off |
-| 5 | SwiftUI Native App (intent input, session manager, escape hatch) | ⬜ Pending |
+| 4 | Browser Extension (Chrome MV3, declarativeNetRequest) | ✅ Done |
+| 5 | SwiftUI Native App (intent input, session manager, escape hatch) | ⏳ Next — awaiting sign-off |
 | 6 | Installer + First-Run Flow (Ollama bundle, model pull, permissions) | ⬜ Pending |
 
-**Tests:** 36/36 passing  
+**Tests:** 43/43 passing  
 ```bash
 # Intent engine (20 tests)
 cd /Users/ronith/Documents/Projects/Stira/intent-engine && python3 -m pytest tests/ -v
 # Hermes (16 tests)
 cd /Users/ronith/Documents/Projects/Stira/hermes && python3 -m pytest tests/ -v
+# Browser extension (7 tests)
+cd /Users/ronith/Documents/Projects/Stira/browser-extension && npx jest
 ```
 
 ---
@@ -166,11 +168,33 @@ Thread-safe (threading.Lock). Writes newline-delimited JSON events back over soc
 
 ---
 
-## Task 4: What To Build Next (Browser Extension)
+## Task 5: What To Build Next (SwiftUI Native App)
 
-**Read the full task spec first:** [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — search for `## Task 4`.
+**Read the full task spec first:** [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — search for `## Task 5`.
 
-**STOP after Task 4 for user sign-off before proceeding to Task 5.**
+**STOP after Task 5 for user sign-off before proceeding to Task 6.**
+
+---
+
+## What Task 4 Built
+
+### `browser-extension/manifest.json`
+Chrome MV3 manifest. Permissions: `declarativeNetRequest`, `declarativeNetRequestWithHostAccess`, `nativeMessaging`. Host permissions: `<all_urls>`. Background service worker points to `dist/background/service_worker.js` (esbuild-bundled output). Dynamic-only rules (`rule_resources: []`).
+
+### `browser-extension/rules/rule_builder.ts`
+```typescript
+export function buildDNRRules(urlRules: ExtensionUrlRule[]): DNRRule[]
+```
+Block rules at priority=1, allow rules (exceptions) at priority=2 — allow always wins. `resourceTypes: chrome.declarativeNetRequest.ResourceType[]`. Rule IDs are sequential unique positive integers starting at 1.
+
+### `browser-extension/background/service_worker.ts`
+Connects to native messaging host `com.stira.extensionbridge` on `onStartup` and `onInstalled`. Sends `{"type": "get_policy", "client_id": "stira-extension"}`. Handles `policy` → apply rules, `policy_update` → re-apply rules, `session_ended` → clear all rules. Clears rules on disconnect.
+
+### `scripts/install-native-messaging.sh`
+Installs Chrome native messaging host manifest at `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.stira.extensionbridge.json`. Takes extension ID as `$1`. Points to `/Applications/Stira.app/Contents/MacOS/StiraExtensionBridge`.
+
+### Build tooling
+`esbuild` bundles `background/service_worker.ts` → `dist/background/service_worker.js`. `tsconfig.json` is type-check only (`noEmit: true`). `tsconfig.test.json` provides CommonJS + jest types for Jest runs.
 
 ---
 
