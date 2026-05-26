@@ -1,0 +1,172 @@
+// PolicySchema.swift
+// Embeds the JSON Schema for StiraPolicy as a Swift string literal.
+// Used by SessionManager to provide the `format` parameter to Ollama.
+
+import Foundation
+
+extension StiraPolicy {
+    static let schemaJSON: String = """
+    {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StiraPolicy",
+      "description": "Central policy object produced by the Stira intent engine and consumed by all enforcement components.",
+      "type": "object",
+      "required": [
+        "schema_version",
+        "session_id",
+        "intent",
+        "session",
+        "apps",
+        "urls",
+        "notifications",
+        "escape_hatch"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "object",
+          "required": ["raw", "normalised", "confidence"],
+          "additionalProperties": false,
+          "properties": {
+            "raw": { "type": "string" },
+            "normalised": { "type": "string" },
+            "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+          }
+        },
+        "session": {
+          "type": "object",
+          "required": ["duration_minutes", "hard_stop"],
+          "additionalProperties": false,
+          "properties": {
+            "duration_minutes": { "type": "integer", "minimum": 0 },
+            "hard_stop": { "type": "boolean" }
+          }
+        },
+        "apps": {
+          "type": "object",
+          "required": ["mode", "blocked", "allowed"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["block_listed", "allow_listed"] },
+            "blocked": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["bundle_id", "display_name"],
+                "additionalProperties": false,
+                "properties": {
+                  "bundle_id": { "type": "string" },
+                  "display_name": { "type": "string" }
+                }
+              }
+            },
+            "allowed": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["bundle_id", "display_name"],
+                "additionalProperties": false,
+                "properties": {
+                  "bundle_id": { "type": "string" },
+                  "display_name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "urls": {
+          "type": "object",
+          "required": ["rules"],
+          "additionalProperties": false,
+          "properties": {
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["pattern", "action", "exceptions", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "pattern": { "type": "string" },
+                  "action": { "type": "string", "enum": ["block", "allow"] },
+                  "exceptions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["pattern", "reason"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "pattern": { "type": "string" },
+                        "reason": { "type": "string" }
+                      }
+                    }
+                  },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "notifications": {
+          "type": "object",
+          "required": ["mode"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["suppress_all", "allow_all", "allow_calendar", "allow_calls_only"]
+            }
+          }
+        },
+        "escape_hatch": {
+          "type": "object",
+          "required": [
+            "mode",
+            "delay_seconds",
+            "require_reason",
+            "min_reason_chars",
+            "exception_scope",
+            "active_exceptions"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["soft", "standard", "strict", "nuclear"] },
+            "delay_seconds": { "type": "integer", "minimum": 0 },
+            "require_reason": { "type": "boolean" },
+            "min_reason_chars": { "type": "integer", "minimum": 0 },
+            "exception_scope": { "type": "string", "enum": ["scoped", "global"] },
+            "active_exceptions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "exception_id",
+                  "target_type",
+                  "target",
+                  "granted_at",
+                  "expires_at",
+                  "reason"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "exception_id": { "type": "string" },
+                  "target_type": { "type": "string", "enum": ["app", "url"] },
+                  "target": { "type": "string" },
+                  "granted_at": { "type": "string" },
+                  "expires_at": { "type": "string" },
+                  "reason": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+}
