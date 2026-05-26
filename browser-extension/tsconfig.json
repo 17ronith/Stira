@@ -6,7 +6,8 @@
     "lib": ["ES2020"],
     "outDir": "dist",
     "strict": true,
-    "noImplicitAny": true
+    "noImplicitAny": true,
+    "noEmit": true
   },
   "include": ["background/**/*.ts", "rules/**/*.ts"],
   "exclude": ["tests/**", "node_modules"]

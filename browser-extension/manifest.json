@@ -12,7 +12,7 @@
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "background/service_worker.js"
+    "service_worker": "dist/background/service_worker.js"
   },
   "declarative_net_request": {
     "rule_resources": []

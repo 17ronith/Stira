@@ -1,23 +1,17 @@
-import { buildDNRRules, DNRRule } from "../rules/rule_builder";
+import { buildDNRRules, DNRRule, ExtensionUrlRule } from "../rules/rule_builder";
 
 const NATIVE_HOST = "com.stira.extensionbridge";
-const SESSION_TOKEN = "stira-session";
-
-interface ExtensionUrlRuleEntry {
-  pattern: string;
-  action: "block" | "allow";
-  exceptions: Array<{ pattern: string }>;
-}
+const CLIENT_ID = "stira-extension";
 
 interface PolicyMessage {
   type: "policy";
   session_token: string;
-  rules: ExtensionUrlRuleEntry[];
+  rules: ExtensionUrlRule[];
 }
 
 interface PolicyUpdateMessage {
   type: "policy_update";
-  rules: ExtensionUrlRuleEntry[];
+  rules: ExtensionUrlRule[];
 }
 
 interface SessionEndedMessage {
@@ -109,7 +103,7 @@ function connectAndRequestPolicy(): void {
   });
 
   // Request the current policy immediately after connecting
-  port.postMessage({ type: "get_policy", session_token: SESSION_TOKEN });
+  port.postMessage({ type: "get_policy", client_id: CLIENT_ID });
 }
 
 // On browser startup: connect and request current policy

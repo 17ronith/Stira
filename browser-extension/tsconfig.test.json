@@ -2,7 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "types": ["chrome", "jest", "node"]
   },
   "include": ["background/**/*.ts", "rules/**/*.ts", "tests/**/*.ts"]
 }

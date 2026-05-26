@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "test": "jest",
-    "build": "tsc"
+    "build": "esbuild background/service_worker.ts --bundle --outfile=dist/background/service_worker.js --platform=browser --format=esm --external:chrome"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",
+    "esbuild": "^0.21.5",
     "@types/jest": "^29.5.12",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.5",

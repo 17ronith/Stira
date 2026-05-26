@@ -8,10 +8,13 @@ export interface DNRRule {
   id: number;
   priority: number;
   action: { type: "block" | "allow" };
-  condition: { urlFilter: string; resourceTypes: string[] };
+  condition: { urlFilter: string; resourceTypes: chrome.declarativeNetRequest.ResourceType[] };
 }
 
-const RESOURCE_TYPES: string[] = ["main_frame", "sub_frame"];
+const RESOURCE_TYPES = [
+  "main_frame",
+  "sub_frame",
+] as chrome.declarativeNetRequest.ResourceType[];
 
 /**
  * Builds Chrome declarativeNetRequest rules from the extension URL rules
