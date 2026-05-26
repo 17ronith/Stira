@@ -45,15 +45,6 @@ func readMessage() -> [String: Any]?? {
     return .some(msg)
 }
 
-func writeMessage(_ dict: [String: Any]) {
-    guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
-    let length = UInt32(data.count)
-    var lengthLE: UInt32 = length.littleEndian
-    let lengthData = Data(bytes: &lengthLE, count: 4)
-    FileHandle.standardOutput.write(lengthData)
-    FileHandle.standardOutput.write(data)
-}
-
 // MARK: - Policy Reading
 
 func readActivePolicy() -> [String: Any]? {
@@ -102,6 +93,63 @@ func extractUrlRules(from policy: [String: Any]) -> [[String: Any]] {
     return result
 }
 
+// MARK: - Thread-safe stdout
+
+// writeMessage can be called from both the main thread (responding to get_policy)
+// and the policy-watcher background thread — serialize all stdout writes.
+let writeLock = NSLock()
+
+func writeMessageSafe(_ dict: [String: Any]) {
+    guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
+    var length = UInt32(data.count).littleEndian
+    writeLock.lock()
+    defer { writeLock.unlock() }
+    let lengthData = Data(bytes: &length, count: 4)
+    FileHandle.standardOutput.write(lengthData)
+    FileHandle.standardOutput.write(data)
+}
+
+// MARK: - Policy File Watcher
+
+// The extension connects once on startup and waits for push notifications.
+// When the Swift app writes active-policy.json (session start), we push
+// policy_update. When the file is deleted (session end), we push session_ended.
+func startPolicyWatcher() {
+    let appSupport = FileManager.default.urls(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask
+    ).first!
+    let policyURL = appSupport.appendingPathComponent("Stira/active-policy.json")
+
+    Thread.detachNewThread {
+        var lastMtime: Date? = nil
+        var lastExists = false
+
+        while true {
+            Thread.sleep(forTimeInterval: 1.0)
+
+            let exists = FileManager.default.fileExists(atPath: policyURL.path)
+            let currentMtime = exists
+                ? (try? FileManager.default.attributesOfItem(atPath: policyURL.path))?[.modificationDate] as? Date
+                : nil
+
+            if exists && (!lastExists || currentMtime != lastMtime) {
+                // File appeared or was modified — push updated rules to extension
+                if let policy = readActivePolicy() {
+                    let rules = extractUrlRules(from: policy)
+                    writeMessageSafe(["type": "policy_update", "rules": rules])
+                }
+            } else if !exists && lastExists {
+                // File was deleted — session ended
+                writeMessageSafe(["type": "session_ended"])
+            }
+
+            lastExists = exists
+            lastMtime = currentMtime
+        }
+    }
+}
+
 // MARK: - Message Handling
 
 func handleMessage(_ message: [String: Any]) {
@@ -111,13 +159,13 @@ func handleMessage(_ message: [String: Any]) {
     case "get_policy":
         if let policy = readActivePolicy() {
             let rules = extractUrlRules(from: policy)
-            writeMessage(["type": "policy", "rules": rules])
+            writeMessageSafe(["type": "policy", "rules": rules])
         } else {
-            writeMessage(["type": "session_ended"])
+            writeMessageSafe(["type": "session_ended"])
         }
 
     default:
-        writeMessage(["type": "error", "message": "Unknown message type: \(type)"])
+        writeMessageSafe(["type": "error", "message": "Unknown message type: \(type)"])
     }
 }
 
@@ -139,5 +187,6 @@ func runLoop() {
     }
 }
 
-// Entry point
+// Entry point: start file watcher, then block on Chrome stdin
+startPolicyWatcher()
 runLoop()
