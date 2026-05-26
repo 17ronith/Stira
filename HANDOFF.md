@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-26  
 **Branch:** master  
-**Last commit:** `2977d8b` docs: add HANDOFF.md for session continuity
+**Last commit:** `4c97b5c` fix: thread safety, NSRunLoop, per-connection emitter, cleanup
 
 ---
 
@@ -10,11 +10,10 @@
 
 ```
 Read HANDOFF.md, then CLAUDE.md. We're building the Stira MVP using
-superpowers:subagent-driven-development. Tasks 1 and 2 are done (20/20 tests
-passing). Task 3 (Hermes Modification) is approved and next. Build it with a
-fresh subagent, run the 2-stage review (spec then quality), then stop for my
-sign-off before Task 4. Full task spec is in
-docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md under ## Task 3.
+superpowers:subagent-driven-development. Tasks 1-3 are done (36/36 tests
+passing). Task 4 (Browser Extension) is next — awaiting sign-off. Full task
+spec is in docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md
+under ## Task 4.
 ```
 
 ---
@@ -23,8 +22,8 @@ docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md under ## Task 3.
 
 - [x] **Task 1** — Policy Schema: `stira-policy.schema.json`, `stira_policy.py`, `StiraPolicy.swift` — 10/10 tests
 - [x] **Task 2** — Intent Engine: `intent_engine.py`, `prompt_builder.py` — 10/10 tests (20/20 total)
-- [ ] **Task 3** — Hermes Modification: Unix socket server/emitter + 3 enforcement skills ← **NEXT (approved)**
-- [ ] **Task 4** — Browser Extension: Chrome MV3, `declarativeNetRequest`, path-level exceptions
+- [x] **Task 3** — Hermes Modification: Unix socket server/emitter + 3 enforcement skills — 16/16 tests (36/36 total)
+- [ ] **Task 4** — Browser Extension: Chrome MV3, `declarativeNetRequest`, path-level exceptions ← **NEXT (awaiting sign-off)**
 - [ ] **Task 5** — SwiftUI Native App: intent input, session manager, escape hatch UX
 - [ ] **Task 6** — Installer + First-Run: Ollama bundle, qwen3:8b pull progress bar, Accessibility onboarding
 
@@ -45,14 +44,17 @@ Local-first macOS focus app. User types intent in plain language → local LLM p
 |------|-----------|--------|
 | 1 | Policy Schema (JSON Schema + Python dataclass + Swift struct) | ✅ Done |
 | 2 | Intent Engine (Ollama + qwen3:8b constrained decoding) | ✅ Done |
-| 3 | Hermes Modification (Unix socket + 3 enforcement skills) | ⏳ Next — awaiting sign-off |
-| 4 | Browser Extension (Chrome MV3, declarativeNetRequest) | ⬜ Pending |
+| 3 | Hermes Modification (Unix socket + 3 enforcement skills) | ✅ Done |
+| 4 | Browser Extension (Chrome MV3, declarativeNetRequest) | ⏳ Next — awaiting sign-off |
 | 5 | SwiftUI Native App (intent input, session manager, escape hatch) | ⬜ Pending |
 | 6 | Installer + First-Run Flow (Ollama bundle, model pull, permissions) | ⬜ Pending |
 
-**Tests:** 20/20 passing  
+**Tests:** 36/36 passing  
 ```bash
+# Intent engine (20 tests)
 cd /Users/ronith/Documents/Projects/Stira/intent-engine && python3 -m pytest tests/ -v
+# Hermes (16 tests)
+cd /Users/ronith/Documents/Projects/Stira/hermes && python3 -m pytest tests/ -v
 ```
 
 ---
@@ -140,7 +142,39 @@ def load_schema() -> dict
 
 ---
 
-## Task 3: What To Build Next (Hermes Modification)
+## What Task 3 Built
+
+### `hermes/stira/main.py`
+Entry point. `python -m stira.main --socket-path <path>`. Spins NSRunLoop on main thread when pyobjc available (so NSWorkspace notifications fire). Socket server on worker thread. SIGTERM handler. Logs to `~/Library/Application Support/Stira/hermes.log`.
+
+### `hermes/stira/policy_receiver.py`
+Unix domain socket server at `~/Library/Application Support/Stira/hermes.sock`. Reads newline-delimited JSON. Dispatches to `on_start_session(task_spec, emitter)`, `on_stop_session(session_id)`, `on_unknown(message)`. Creates parent dir if missing.
+
+### `hermes/stira/event_emitter.py`
+Thread-safe (threading.Lock). Writes newline-delimited JSON events back over socket. Per-connection (created fresh per client). BrokenPipeError caught silently. All events include `type`, `session_id`, `timestamp` (ISO 8601 UTC).
+
+### `hermes/stira/session_controller.py`
+`SessionController(task_spec, emitter)`. Validates `spec_version == "1.0"`. `start()` initialises three skills with rollback on partial failure. `stop()` tears down skills gracefully, emits `session_ended`.
+
+### `hermes/stira/skills/`
+- `app_suppressor.py` — `AppSuppressor(blocked_bundle_ids, on_blocked)`. NSWorkspace `didActivateApplicationNotification` subscription. pyobjc optional (graceful ImportError).
+- `focus_killer.py` — `FocusKiller()`. `kill_focus(pid)` switches focus to Finder. pyobjc optional.
+- `app_monitor.py` — `AppMonitor(on_app_opened)`. NSWorkspace activation/launch notifications. pyobjc optional.
+
+### `hermes/tests/`
+16 tests: socket protocol (12) + session controller (4 + integration test for on_blocked→kill_focus→emit_focus_killed chain).
+
+---
+
+## Task 4: What To Build Next (Browser Extension)
+
+**Read the full task spec first:** [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — search for `## Task 4`.
+
+**STOP after Task 4 for user sign-off before proceeding to Task 5.**
+
+---
+
+## Task 3: What To Build Next (Hermes Modification) [COMPLETED]
 
 **Read the full task spec first:** [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — search for `## Task 3`.
 
