@@ -197,7 +197,7 @@ No-op — `PolicyStore` is the sole writer of `active-policy.json`, which `Stira
 - `EscapeHatchView.swift` — immovable countdown circle, neutral text, reason TextField with char count, Submit disabled until ≥ 20 chars
 
 ### `stira-macos/Sources/StiraExtensionBridge/main.swift`
-Chrome native messaging host. POSIX blocking `read()` for 4-byte LE length prefix + JSON body. Reads `active-policy.json`, extracts URL rules, responds as `policy` or `session_ended`. Malformed frames skip-and-continue; EOF exits cleanly.
+Chrome native messaging host. POSIX blocking `read()` for 4-byte LE length prefix + JSON body. Reads `active-policy.json`, extracts URL rules, responds as `policy` or `session_ended`. Malformed frames skip-and-continue; EOF exits cleanly. Background thread polls `active-policy.json` every 1s — pushes `policy_update` when the file is written (session start) and `session_ended` when it is deleted (session end). Stdout writes serialized via `NSLock`.
 
 ---
 
