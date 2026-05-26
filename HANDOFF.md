@@ -2,7 +2,34 @@
 
 **Date:** 2026-05-26  
 **Branch:** master  
-**Last commit:** `746f7bf` feat: add Ollama/qwen3:8b intent engine with constrained JSON decoding
+**Last commit:** `2977d8b` docs: add HANDOFF.md for session continuity
+
+---
+
+## Start Here (Paste Into New Session)
+
+```
+Read HANDOFF.md, then CLAUDE.md. We're building the Stira MVP using
+superpowers:subagent-driven-development. Tasks 1 and 2 are done (20/20 tests
+passing). Task 3 (Hermes Modification) is approved and next. Build it with a
+fresh subagent, run the 2-stage review (spec then quality), then stop for my
+sign-off before Task 4. Full task spec is in
+docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md under ## Task 3.
+```
+
+---
+
+## Task List
+
+- [x] **Task 1** — Policy Schema: `stira-policy.schema.json`, `stira_policy.py`, `StiraPolicy.swift` — 10/10 tests
+- [x] **Task 2** — Intent Engine: `intent_engine.py`, `prompt_builder.py` — 10/10 tests (20/20 total)
+- [ ] **Task 3** — Hermes Modification: Unix socket server/emitter + 3 enforcement skills ← **NEXT (approved)**
+- [ ] **Task 4** — Browser Extension: Chrome MV3, `declarativeNetRequest`, path-level exceptions
+- [ ] **Task 5** — SwiftUI Native App: intent input, session manager, escape hatch UX
+- [ ] **Task 6** — Installer + First-Run: Ollama bundle, qwen3:8b pull progress bar, Accessibility onboarding
+
+**Total tests passing:** 20/20  
+**Acceptance criterion:** 10-second test (intent → visible enforcement, one permission ask)
 
 ---
 
@@ -168,34 +195,42 @@ hermes/tests/test_socket_protocol.py
 The CLAUDE.md requires sign-off between each component:
 - Complete a task fully (TDD + 2-stage review: spec compliance then code quality)
 - Present results to user
-- Wait for sign-off before starting next task
+- **Wait for sign-off before starting next task** — do not auto-proceed
 - If user says "proceed" or "approved", start the next task
 
-Use subagent-driven development (`superpowers:subagent-driven-development` skill). Fresh subagent per task. Two-stage review after each implementer run.
+Use `superpowers:subagent-driven-development`. Fresh subagent per task. Spec compliance review first, then code quality review. Fix any issues before marking complete.
 
 ---
 
 ## How To Verify Current State
 
 ```bash
-# Check all tests pass
+# Confirm 20/20 tests pass
 cd /Users/ronith/Documents/Projects/Stira/intent-engine
 python3 -m pytest tests/ -v
-# Expected: 20 passed
 
-# Check git log
+# Confirm git log
 git log --oneline
-# Expected 4 commits:
-# 746f7bf feat: add Ollama/qwen3:8b intent engine...
+# 2977d8b docs: add HANDOFF.md for session continuity
+# 746f7bf feat: add Ollama/qwen3:8b intent engine with constrained JSON decoding
 # 13d31ea fix: remove unused datetime import
-# caf5b84 feat: add StiraPolicy schema...
+# caf5b84 feat: add StiraPolicy schema with Python and Swift type definitions
 # df33af8 chore: initial project setup
 ```
 
 ---
 
+## Open Notes From Reviews
+
+- **Task 2 quality review flagged:** `parse_intent()` accepts empty strings — caller should trim/validate `raw_intent` before passing. The Session Manager (Task 5) must do this validation.
+- **Task 1 quality review noted:** `to_dict()` return annotations were already present (reviewer was wrong); unused `datetime` import was removed in fix commit `13d31ea`.
+- **Schema IDE warning:** VS Code may flag the JSON Schema `$schema` draft-07 URL as unresolvable — this is a false positive. The schema is valid JSON and passes `jsonschema.Draft7Validator`.
+
+---
+
 ## Key Files To Read Before Starting
 
-1. [CLAUDE.md](CLAUDE.md) — all product and architecture decisions (authoritative)
-2. [docs/schema/stira-policy.schema.json](docs/schema/stira-policy.schema.json) — the central data structure
-3. [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — full implementation plan with code for all 6 tasks
+1. [CLAUDE.md](CLAUDE.md) — all product and architecture decisions (authoritative, read this first)
+2. [HANDOFF.md](HANDOFF.md) — this file
+3. [docs/schema/stira-policy.schema.json](docs/schema/stira-policy.schema.json) — central data structure
+4. [docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md](docs/superpowers/plans/2026-05-26-stira-mvp-implementation.md) — full implementation plan with code for all 6 tasks
