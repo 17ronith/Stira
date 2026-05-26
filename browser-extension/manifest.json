@@ -5,6 +5,7 @@
   "description": "Stira focus enforcement",
   "permissions": [
     "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
     "nativeMessaging"
   ],
   "host_permissions": [
