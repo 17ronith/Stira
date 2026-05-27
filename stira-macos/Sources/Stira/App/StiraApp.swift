@@ -4,11 +4,12 @@
 import SwiftUI
 import AppKit
 
-@main
-struct StiraApp: App {
+public struct StiraApp: App {
+    public init() {}
+
     @StateObject private var sessionManager = SessionManager()
 
-    var body: some Scene {
+    public var body: some Scene {
         WindowGroup {
             contentView
                 .environmentObject(sessionManager)

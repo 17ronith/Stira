@@ -1,0 +1,3 @@
+import StiraCore
+
+StiraApp.main()
