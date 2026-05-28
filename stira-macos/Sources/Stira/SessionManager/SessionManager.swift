@@ -41,7 +41,7 @@ final class SessionManager: ObservableObject {
 
     // MARK: - Session Lifecycle
 
-    func startSession(rawIntent: String) async {
+    func startSession(rawIntent: String, durationMinutes: Int? = nil) async {
         let trimmed = rawIntent.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             errorMessage = "Please describe what you want to focus on."
@@ -63,7 +63,8 @@ final class SessionManager: ObservableObject {
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         do {
-            let policy = try await callOllama(rawIntent: trimmed)
+            var policy = try await callOllama(rawIntent: trimmed)
+            if let dur = durationMinutes { policy = policy.withDuration(minutes: dur) }
             policyStore.setActivePolicy(policy)
 
             let taskSpec = buildTaskSpec(from: policy)
@@ -140,9 +141,10 @@ final class SessionManager: ObservableObject {
         state = .idle
     }
 
-    func requestEscapeHatch(blockedApps: [AppRule]) {
+    func requestEscapeHatch() {
         state = .escapeHatch
-        escapeHatchController.beginEscapeHatch(blockedApps: blockedApps)
+        let blocked = policyStore.activePolicy?.apps.blocked ?? []
+        escapeHatchController.beginEscapeHatch(blockedApps: blocked)
     }
 
     func handleEscapeHatchGrant() {

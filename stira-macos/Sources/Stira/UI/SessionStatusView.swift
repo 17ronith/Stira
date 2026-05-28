@@ -47,10 +47,9 @@ struct SessionStatusView: View {
             }
 
             VStack(spacing: 10) {
-                Button(action: {
-                    let blocked = sessionManager.policyStore.activePolicy?.apps.blocked ?? []
-                    sessionManager.requestEscapeHatch(blockedApps: blocked)
-                }) {
+                Button {
+                    sessionManager.requestEscapeHatch()
+                } label: {
                     Text("I need a break")
                         .frame(maxWidth: .infinity)
                 }
