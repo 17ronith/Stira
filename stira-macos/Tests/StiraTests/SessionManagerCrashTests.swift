@@ -22,7 +22,10 @@ final class SessionManagerCrashTests: XCTestCase {
         let sm = SessionManager()
         sm.state = .escapeHatch
         sm.sessionStartTime = Date()
-        sm.escapeHatchController.beginEscapeHatch(target: "com.discord.app")
+        sm.escapeHatchController.beginEscapeHatch(blockedApps: [
+            AppRule(bundleId: "com.discord.app", displayName: "Discord")
+        ])
+        sm.escapeHatchController.selectApp(bundleId: "com.discord.app", displayName: "Discord")
 
         sm.handleHermesCrash(exitCode: 137)
 

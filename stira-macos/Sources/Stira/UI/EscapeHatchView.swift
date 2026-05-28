@@ -10,6 +10,8 @@ struct EscapeHatchView: View {
     var body: some View {
         Group {
             switch controller.state {
+            case .appPicker:
+                appPickerView
             case .countdown(let remaining):
                 countdownView(remaining: remaining)
             case .reasonEntry:
@@ -22,6 +24,58 @@ struct EscapeHatchView: View {
         }
         .frame(minWidth: 360, minHeight: 240)
         .padding(28)
+    }
+
+    // MARK: - App Picker
+
+    @State private var customAppName: String = ""
+
+    private var appPickerView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Which app do you need?")
+                .font(.title3)
+                .fontWeight(.semibold)
+
+            if !controller.blockedApps.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(controller.blockedApps, id: \.bundleId) { app in
+                        Button(action: {
+                            controller.selectApp(bundleId: app.bundleId, displayName: app.displayName)
+                        }) {
+                            HStack {
+                                Text(app.displayName.isEmpty ? app.bundleId : app.displayName)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Or name another app:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    TextField("App name", text: $customAppName)
+                        .textFieldStyle(.roundedBorder)
+
+                    Button("Continue") {
+                        controller.selectCustomApp(name: customAppName)
+                    }
+                    .disabled(customAppName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 
     // MARK: - Countdown

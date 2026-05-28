@@ -140,9 +140,9 @@ final class SessionManager: ObservableObject {
         state = .idle
     }
 
-    func requestEscapeHatch(target: String) {
+    func requestEscapeHatch(blockedApps: [AppRule]) {
         state = .escapeHatch
-        escapeHatchController.beginEscapeHatch(target: target)
+        escapeHatchController.beginEscapeHatch(blockedApps: blockedApps)
     }
 
     func handleEscapeHatchGrant() {
