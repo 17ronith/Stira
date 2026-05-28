@@ -74,6 +74,15 @@ final class SessionManager: ObservableObject {
             sessionStartTime = Date()
             state = .active
 
+            let durationMins = policy.session.durationMinutes
+            if durationMins > 0 {
+                sessionTimeoutTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(durationMins) * 60 * 1_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    await self?.endSession()
+                }
+            }
+
             // Start listening for Hermes events in the background
             Task { [weak self] in
                 guard let self = self else { return }
@@ -85,6 +94,8 @@ final class SessionManager: ObservableObject {
                 }
             }
         } catch {
+            sessionTimeoutTask?.cancel()
+            sessionTimeoutTask = nil
             // Issue 7: clear stale policy so the browser extension doesn't keep blocking
             policyStore.clearPolicy()
             hermesProcess?.terminate()
@@ -95,6 +106,8 @@ final class SessionManager: ObservableObject {
     }
 
     func endSession() async {
+        sessionTimeoutTask?.cancel()
+        sessionTimeoutTask = nil
         state = .ending
 
         let sessionId = policyStore.activePolicy?.sessionId ?? UUID().uuidString
