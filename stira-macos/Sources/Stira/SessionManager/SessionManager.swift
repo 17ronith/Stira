@@ -119,6 +119,8 @@ final class SessionManager: ObservableObject {
     func handleEscapeHatchGrant() {
         guard let exception = escapeHatchController.submitReason() else { return }
         policyStore.applyException(exception)
+        let sessionId = policyStore.activePolicy?.sessionId ?? ""
+        try? hermesSocket.applyException(sessionId: sessionId, bundleId: exception.target)
         state = .active
     }
 

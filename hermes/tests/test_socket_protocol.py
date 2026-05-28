@@ -151,6 +151,102 @@ class TestPolicyReceiverDeserialization:
 
 
 # ---------------------------------------------------------------------------
+# apply_exception protocol tests
+# ---------------------------------------------------------------------------
+
+class TestApplyExceptionProtocol:
+    """Test that apply_exception messages are dispatched correctly."""
+
+    def test_apply_exception_dispatches_to_on_apply_exception_callback(self):
+        """apply_exception message should call on_apply_exception with the bundle_id."""
+        from stira.policy_receiver import PolicyReceiver
+
+        received = []
+        receiver = PolicyReceiver(socket_path="/tmp/test.sock")
+        receiver.on_apply_exception = lambda bid: received.append(bid)
+
+        msg = {"type": "apply_exception", "bundle_id": "com.twitter.twittermac", "session_id": "test-session-123"}
+        receiver._dispatch(msg)
+
+        assert len(received) == 1
+        assert received[0] == "com.twitter.twittermac"
+
+    def test_apply_exception_missing_bundle_id_calls_callback_with_empty_string(self):
+        """apply_exception with no bundle_id field should call callback with empty string, not crash."""
+        from stira.policy_receiver import PolicyReceiver
+
+        received = []
+        receiver = PolicyReceiver(socket_path="/tmp/test.sock")
+        receiver.on_apply_exception = lambda bid: received.append(bid)
+
+        msg = {"type": "apply_exception"}
+        receiver._dispatch(msg)
+
+        assert len(received) == 1
+        assert received[0] == ""
+
+    def test_apply_exception_empty_bundle_id_calls_callback_with_empty_string(self):
+        """apply_exception with empty bundle_id should call callback with empty string, not crash."""
+        from stira.policy_receiver import PolicyReceiver
+
+        received = []
+        receiver = PolicyReceiver(socket_path="/tmp/test.sock")
+        receiver.on_apply_exception = lambda bid: received.append(bid)
+
+        msg = {"type": "apply_exception", "bundle_id": ""}
+        receiver._dispatch(msg)
+
+        assert len(received) == 1
+        assert received[0] == ""
+
+    def test_session_controller_apply_exception_calls_suppressor_unblock(self):
+        """SessionController.apply_exception() should call AppSuppressor.unblock() with the bundle_id."""
+        from unittest.mock import MagicMock
+        from stira.session_controller import SessionController
+
+        task_spec = {
+            "spec_version": "1.0",
+            "session_id": "sess-abc",
+            "blocked_bundle_ids": ["com.twitter.twittermac", "com.discord.discord"],
+            "allowed_bundle_ids": [],
+            "enforcement_mode": "block_listed",
+            "session_duration_seconds": 3600,
+            "audit_level": "standard",
+        }
+        mock_emitter = MagicMock()
+        controller = SessionController(task_spec=task_spec, emitter=mock_emitter)
+
+        # Inject a mock suppressor
+        mock_suppressor = MagicMock()
+        controller._suppressor = mock_suppressor
+
+        controller.apply_exception("com.twitter.twittermac")
+
+        mock_suppressor.unblock.assert_called_once_with("com.twitter.twittermac")
+
+    def test_session_controller_apply_exception_no_suppressor_does_not_crash(self):
+        """SessionController.apply_exception() with no active suppressor should not raise."""
+        from unittest.mock import MagicMock
+        from stira.session_controller import SessionController
+
+        task_spec = {
+            "spec_version": "1.0",
+            "session_id": "sess-xyz",
+            "blocked_bundle_ids": [],
+            "allowed_bundle_ids": [],
+            "enforcement_mode": "block_listed",
+            "session_duration_seconds": 3600,
+            "audit_level": "standard",
+        }
+        mock_emitter = MagicMock()
+        controller = SessionController(task_spec=task_spec, emitter=mock_emitter)
+        # _suppressor is None by default (session not started)
+
+        # Should not raise
+        controller.apply_exception("com.example.app")
+
+
+# ---------------------------------------------------------------------------
 # EventEmitter tests
 # ---------------------------------------------------------------------------
 

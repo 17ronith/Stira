@@ -115,10 +115,18 @@ def main() -> None:
     def on_unknown(message: dict) -> None:
         logger.warning("Unknown message type received: %r", message.get("type"))
 
+    def on_apply_exception(bundle_id: str) -> None:
+        ctrl = _state["controller"]
+        if ctrl is not None:
+            ctrl.apply_exception(bundle_id)
+        else:
+            logger.warning("apply_exception received but no active session")
+
     receiver = PolicyReceiver(socket_path=args.socket_path)
     receiver.on_start_session = on_start_session
     receiver.on_stop_session = on_stop_session
     receiver.on_unknown = on_unknown
+    receiver.on_apply_exception = on_apply_exception
 
     # Override _serve_connection to wire a per-connection EventEmitter before
     # dispatching any messages.  The write end of the socket is opened as a

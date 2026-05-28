@@ -30,6 +30,7 @@ class PolicyReceiver:
     Callbacks:
         on_start_session(task_spec: dict)
         on_stop_session(session_id: str)
+        on_apply_exception(bundle_id: str)
         on_unknown(message: dict)
     """
 
@@ -42,6 +43,7 @@ class PolicyReceiver:
         # Default no-op callbacks — callers replace these
         self.on_start_session: Callable[[dict], None] = lambda spec: None
         self.on_stop_session: Callable[[str], None] = lambda sid: None
+        self.on_apply_exception: Callable[[str], None] = lambda bundle_id: None
         self.on_unknown: Callable[[dict], None] = lambda msg: None
 
     # ------------------------------------------------------------------
@@ -69,6 +71,9 @@ class PolicyReceiver:
         elif msg_type == "stop_session":
             session_id = message.get("session_id", "")
             self.on_stop_session(session_id)
+        elif msg_type == "apply_exception":
+            bundle_id = message.get("bundle_id", "")
+            self.on_apply_exception(bundle_id)
         else:
             self.on_unknown(message)
 

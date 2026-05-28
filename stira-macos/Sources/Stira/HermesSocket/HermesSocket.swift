@@ -59,6 +59,18 @@ private struct StopSessionMessage: Codable {
     }
 }
 
+private struct ApplyExceptionMessage: Codable {
+    let type: String
+    let sessionId: String
+    let bundleId: String
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case sessionId = "session_id"
+        case bundleId = "bundle_id"
+    }
+}
+
 // MARK: - HermesSocket
 
 @MainActor
@@ -148,6 +160,16 @@ final class HermesSocket: ObservableObject {
         let data = try encoder.encode(message)
         var line = data
         line.append(0x0A)
+        try write(data: line)
+    }
+
+    func applyException(sessionId: String, bundleId: String) throws {
+        guard socketFd >= 0 else { return }
+
+        let message = ApplyExceptionMessage(type: "apply_exception", sessionId: sessionId, bundleId: bundleId)
+        let data = try encoder.encode(message)
+        var line = data
+        line.append(0x0A) // newline
         try write(data: line)
     }
 

@@ -113,3 +113,8 @@ class AppSuppressor:
     def stop(self) -> None:
         """Stop monitoring."""
         self._unsubscribe_from_workspace_notifications()
+
+    def unblock(self, bundle_id: str) -> None:
+        """Remove bundle_id from the blocked set so it is no longer suppressed."""
+        self.blocked_bundle_ids = [b for b in self.blocked_bundle_ids if b != bundle_id]
+        logger.info("Unblocked app: %s", bundle_id)
