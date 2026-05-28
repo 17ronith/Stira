@@ -20,6 +20,15 @@ final class OnboardingCoordinator: ObservableObject {
 
     let ollamaInstaller = OllamaInstaller()
 
+    private var permissionTrigger: AsyncStream<Void>.Continuation?
+
+    func recheckPermission() {
+        // AXIsProcessTrusted() is unreliable for ad-hoc signed binaries on macOS 26:
+        // TCC ties the entry to the build hash, so every swift build invalidates it.
+        // Trust the user's manual confirmation and finish the stream to proceed.
+        permissionTrigger?.finish()
+    }
+
     func start() async {
         // Step 1: RAM check
         step = .checkingRAM
@@ -61,13 +70,12 @@ final class OnboardingCoordinator: ObservableObject {
         // Step 4: Accessibility permission
         if !AXIsProcessTrusted() {
             step = .awaitingPermission
-            // C4: use try await (not try?) so CancellationError propagates and exits the loop cleanly
+            // Trigger the system prompt — this registers the current binary with TCC so the
+            // correct entry appears in System Settings (manual "+" navigation picks wrong path).
+            AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
             do {
-                while !AXIsProcessTrusted() {
-                    try await Task.sleep(nanoseconds: 2_000_000_000)
-                }
+                try await awaitAccessibilityPermission()
             } catch {
-                // Task was cancelled — exit without completing
                 return
             }
         }
@@ -78,6 +86,36 @@ final class OnboardingCoordinator: ObservableObject {
         // Complete
         step = .complete
         isComplete = true
+    }
+
+    private func awaitAccessibilityPermission() async throws {
+        let (stream, cont) = AsyncStream<Void>.makeStream()
+        permissionTrigger = cont
+
+        let observer = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { _ in cont.yield() }
+
+        let pollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                cont.yield()
+            }
+        }
+
+        defer {
+            permissionTrigger = nil
+            pollTask.cancel()
+            DistributedNotificationCenter.default().removeObserver(observer)
+            cont.finish()
+        }
+
+        for await _ in stream {
+            if AXIsProcessTrusted() { return }
+        }
+        // Stream finished via recheckPermission() — user confirmed manually, proceed.
     }
 
     private func installNativeMessagingManifest() {

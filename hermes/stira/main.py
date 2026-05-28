@@ -179,7 +179,9 @@ def main() -> None:
             except Exception as exc:
                 logger.warning("Error stopping session on SIGTERM: %s", exc)
         receiver.stop()
-        sys.exit(0)
+        # os._exit avoids raising SystemExit into Objective-C's NSRunLoop,
+        # which would cause OC_PythonException crashes in PyObjC.
+        os._exit(0)
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 

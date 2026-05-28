@@ -36,7 +36,7 @@ class EventEmitter:
                 self._writer.write(line)
                 if hasattr(self._writer, "flush"):
                     self._writer.flush()
-            except (BrokenPipeError, OSError) as e:
+            except (BrokenPipeError, OSError, ValueError) as e:
                 logging.warning("EventEmitter: write failed: %s", e)
 
     def emit_session_started(self, session_id: str) -> None:

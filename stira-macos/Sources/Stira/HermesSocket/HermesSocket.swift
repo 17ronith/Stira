@@ -26,7 +26,7 @@ struct HermesTaskSpec: Codable {
     }
 }
 
-struct HermesEvent: Codable {
+struct HermesEvent: Codable, Equatable {
     let type: String
     let sessionId: String
     let timestamp: String

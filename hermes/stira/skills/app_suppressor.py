@@ -25,14 +25,18 @@ try:
             return self
 
         def appDidActivate_(self, notification):
-            app_info = notification.userInfo()
-            app = app_info.get(AppKit.NSWorkspaceApplicationKey)
-            if app is not None:
-                bid = app.bundleIdentifier()
-                with self._suppressor._lock:
-                    blocked = bid is not None and bid in self._suppressor.blocked_bundle_ids
-                if blocked:
-                    self._suppressor._handle_blocked_activation(bid)
+            try:
+                app_info = notification.userInfo()
+                app = app_info.get(AppKit.NSWorkspaceApplicationKey)
+                if app is not None:
+                    bid = app.bundleIdentifier()
+                    with self._suppressor._lock:
+                        blocked = bid is not None and bid in self._suppressor.blocked_bundle_ids
+                    if blocked:
+                        self._suppressor._handle_blocked_activation(bid)
+            except Exception as exc:
+                import logging as _logging
+                _logging.getLogger(__name__).warning("appDidActivate_ error: %s", exc)
 
 except ImportError:
     HAS_PYOBJC = False

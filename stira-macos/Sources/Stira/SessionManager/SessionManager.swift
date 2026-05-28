@@ -209,7 +209,7 @@ final class SessionManager: ObservableObject {
             "prompt": prompt,
             "stream": false,
             "format": "json",
-            "options": ["num_predict": 1024]
+            "options": ["num_predict": 2048]
         ]
 
         let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
@@ -301,6 +301,16 @@ final class SessionManager: ObservableObject {
             throw NSError(domain: "SessionManager", code: -11,
                           userInfo: [NSLocalizedDescriptionKey: "Cannot locate Python 3 interpreter"])
         }
+
+        // Kill any orphaned Hermes processes from a previous run whose Process reference
+        // was lost (e.g. app crashed or swift run was restarted). These orphans keep their
+        // AppSuppressor active and write to a closed conn_writer, producing the
+        // "I/O operation on closed file" warnings in the logs.
+        let killer = Process()
+        killer.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killer.arguments = ["-f", "stira.main"]
+        try? killer.run()
+        killer.waitUntilExit()
 
         hermesProcess?.terminate()
         hermesProcess = nil

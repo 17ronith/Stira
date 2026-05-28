@@ -10,9 +10,22 @@ DerivedData/
 dist/
 .env
 *.log
-# Local machine-specific Claude Code permissions — never commit
-.claude/settings.local.json
-# Agent council runtime job artifacts (all skill host dirs)
-.agents/skills/agent-council/.jobs/
-.claude/skills/agent-council/.jobs/
-.codex/skills/agent-council/.jobs/
+
+# AI tool directories — not part of the Stira codebase
+.agents/
+.claude/
+.codex/
+.remember/
+.playwright-mcp/
+
+# Xcode-generated SPM workspace files
+stira-macos/.swiftpm/xcode/
+
+# Screenshots / design assets (large binaries, not needed in source)
+stira-*.png
+
+# Website (unreleased)
+website/
+
+# Internal AI planning docs
+docs/superpowers/plans/2026-05-28-*.md

@@ -25,10 +25,12 @@ public struct StiraApp: App {
     public var body: some Scene {
         WindowGroup {
             rootView
+                .preferredColorScheme(.dark)
                 .environmentObject(sessionManager)
                 .environmentObject(onboardingCoordinator)
                 .task { await onboardingCoordinator.start() }
                 .onAppear { NSApp.activate(ignoringOtherApps: true) }
+                .background(WindowConfigurator())
                 .sheet(isPresented: Binding(
                     get: { sessionManager.state == .escapeHatch },
                     set: { _ in }
@@ -38,6 +40,7 @@ public struct StiraApp: App {
                         .interactiveDismissDisabled(true)
                 }
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
     }
 
