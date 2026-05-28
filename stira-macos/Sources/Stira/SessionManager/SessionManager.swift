@@ -34,9 +34,7 @@ final class SessionManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.hermesProcess?.terminate()
-            }
+            self?.hermesProcess?.terminate()
         }
     }
 
@@ -59,6 +57,8 @@ final class SessionManager: ObservableObject {
             state = .idle
             return
         }
+        // Give Hermes 0.5s to start its socket server. HermesSocket.connectWithRetry
+        // provides an additional 4.5s of retry budget, so this is not load-bearing.
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         do {
@@ -86,6 +86,8 @@ final class SessionManager: ObservableObject {
         } catch {
             // Issue 7: clear stale policy so the browser extension doesn't keep blocking
             policyStore.clearPolicy()
+            hermesProcess?.terminate()
+            hermesProcess = nil
             errorMessage = "Failed to start session: \(error.localizedDescription)"
             state = .idle
         }
@@ -246,7 +248,9 @@ final class SessionManager: ObservableObject {
 
         if fm.fileExists(atPath: appleSilicon.path) { return appleSilicon }
         if fm.fileExists(atPath: intelHomebrew.path) { return intelHomebrew }
-        return URL(fileURLWithPath: "/usr/bin/python3")
+        let systemPython = URL(fileURLWithPath: "/usr/bin/python3")
+        if fm.fileExists(atPath: systemPython.path) { return systemPython }
+        return nil
     }
 
     private func launchHermes() throws {
@@ -266,7 +270,11 @@ final class SessionManager: ObservableObject {
         process.executableURL = python
         process.arguments = ["-m", "stira.main"]
         process.currentDirectoryURL = root
-        process.environment = ProcessInfo.processInfo.environment
+        process.environment = [
+            "HOME": ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory(),
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+            "PYTHONUNBUFFERED": "1",
+        ]
         try process.run()
         hermesProcess = process
     }
