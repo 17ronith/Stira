@@ -59,6 +59,17 @@ struct AppRule: Codable, Equatable {
         case bundleId = "bundle_id"
         case displayName = "display_name"
     }
+
+    init(bundleId: String, displayName: String) {
+        self.bundleId = bundleId
+        self.displayName = displayName
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        bundleId = try c.decode(String.self, forKey: .bundleId)
+        displayName = (try? c.decode(String.self, forKey: .displayName)) ?? ""
+    }
 }
 
 struct UrlException: Codable, Equatable {
