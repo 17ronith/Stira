@@ -8,6 +8,7 @@ Gracefully degrades if pyobjc is not available.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Callable, List
 
 try:
@@ -28,7 +29,9 @@ try:
             app = app_info.get(AppKit.NSWorkspaceApplicationKey)
             if app is not None:
                 bid = app.bundleIdentifier()
-                if bid and bid in self._suppressor.blocked_bundle_ids:
+                with self._suppressor._lock:
+                    blocked = bid is not None and bid in self._suppressor.blocked_bundle_ids
+                if blocked:
                     self._suppressor._handle_blocked_activation(bid)
 
 except ImportError:
@@ -57,6 +60,7 @@ class AppSuppressor:
         self.blocked_bundle_ids = list(blocked_bundle_ids)
         self.on_blocked = on_blocked
         self._observer = None
+        self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # macOS layer (isolated for mockability)
@@ -116,5 +120,6 @@ class AppSuppressor:
 
     def unblock(self, bundle_id: str) -> None:
         """Remove bundle_id from the blocked set so it is no longer suppressed."""
-        self.blocked_bundle_ids = [b for b in self.blocked_bundle_ids if b != bundle_id]
+        with self._lock:
+            self.blocked_bundle_ids = [b for b in self.blocked_bundle_ids if b != bundle_id]
         logger.info("Unblocked app: %s", bundle_id)

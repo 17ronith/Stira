@@ -114,7 +114,8 @@ class SessionController:
         """Unblock a specific app for the current session (escape hatch exception)."""
         if self._suppressor is not None:
             self._suppressor.unblock(bundle_id)
-            logger.info("Exception applied: unblocked %s", bundle_id)
+        else:
+            logger.warning("apply_exception called but no suppressor active")
 
     def stop(self) -> None:
         """Gracefully stop all skills and emit session_ended."""

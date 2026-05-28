@@ -120,7 +120,11 @@ final class SessionManager: ObservableObject {
         guard let exception = escapeHatchController.submitReason() else { return }
         policyStore.applyException(exception)
         let sessionId = policyStore.activePolicy?.sessionId ?? ""
-        try? hermesSocket.applyException(sessionId: sessionId, bundleId: exception.target)
+        do {
+            try hermesSocket.applyException(sessionId: sessionId, bundleId: exception.target)
+        } catch {
+            print("[SessionManager] Failed to send apply_exception to Hermes: \(error)")
+        }
         state = .active
     }
 
