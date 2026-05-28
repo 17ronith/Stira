@@ -213,13 +213,37 @@ final class OllamaInstaller: ObservableObject {
     }
 
     private func launchOllamaApp() async {
-        // I1: launch from ~/Applications/Ollama.app
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let fm = FileManager.default
+        let homeDir = fm.homeDirectoryForCurrentUser
+
+        // Try ~/Applications/Ollama.app first (downloaded installer)
         let appURL = homeDir.appendingPathComponent("Applications/Ollama.app")
-        guard FileManager.default.fileExists(atPath: appURL.path) else { return }
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = false
-        _ = try? await NSWorkspace.shared.openApplication(at: appURL, configuration: config)
+        if fm.fileExists(atPath: appURL.path) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = false
+            _ = try? await NSWorkspace.shared.openApplication(at: appURL, configuration: config)
+            return
+        }
+
+        // Fall back to brew-installed binary: launch `ollama serve` as subprocess
+        let brewPaths = [
+            "/opt/homebrew/bin/ollama",   // Apple Silicon
+            "/usr/local/bin/ollama",       // Intel
+        ]
+        guard let ollamaBin = brewPaths.first(where: { fm.fileExists(atPath: $0) }) else {
+            return  // not installed at all — installOllama() will handle it
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: ollamaBin)
+        process.arguments = ["serve"]
+        process.environment = [
+            "HOME": homeDir.path,
+            "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        ]
+        try? process.run()
+        // Don't store reference — Ollama serve is fire-and-forget
+        // ensureOllama() will poll isOllamaRunning() until it's up
     }
 }
 
