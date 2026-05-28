@@ -2,6 +2,7 @@
 // Orchestrates the full onboarding flow: RAM → Ollama → model → permission → complete.
 
 import Foundation
+import ApplicationServices
 
 enum OnboardingStep: Equatable {
     case checkingRAM
@@ -53,6 +54,20 @@ final class OnboardingCoordinator: ObservableObject {
                 }
             } catch {
                 step = .failed("Failed to download AI model: \(error.localizedDescription)")
+                return
+            }
+        }
+
+        // Step 4: Accessibility permission
+        if !AXIsProcessTrusted() {
+            step = .awaitingPermission
+            // C4: use try await (not try?) so CancellationError propagates and exits the loop cleanly
+            do {
+                while !AXIsProcessTrusted() {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            } catch {
+                // Task was cancelled — exit without completing
                 return
             }
         }
