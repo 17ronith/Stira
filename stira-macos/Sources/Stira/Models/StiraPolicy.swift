@@ -231,3 +231,18 @@ extension StiraPolicy {
         )
     )
 }
+
+extension StiraPolicy {
+    func withDuration(minutes: Int) -> StiraPolicy {
+        StiraPolicy(
+            schemaVersion: schemaVersion,
+            sessionId: sessionId,
+            intent: intent,
+            session: SessionInfo(durationMinutes: minutes, hardStop: session.hardStop),
+            apps: apps,
+            urls: urls,
+            notifications: notifications,
+            escapeHatch: escapeHatch
+        )
+    }
+}
