@@ -20,5 +20,10 @@ let package = Package(
             name: "StiraExtensionBridge",
             path: "Sources/StiraExtensionBridge"
         ),
+        .testTarget(
+            name: "StiraTests",
+            dependencies: ["StiraCore"],
+            path: "Tests/StiraTests"
+        ),
     ]
 )
