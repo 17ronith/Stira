@@ -34,7 +34,7 @@ struct EscapeHatchView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Which app do you need?")
                 .font(.title3)
-                .fontWeight(.semibold)
+                .bold()
 
             if !controller.blockedApps.isEmpty {
                 VStack(spacing: 8) {
@@ -46,7 +46,7 @@ struct EscapeHatchView: View {
                                 Text(app.displayName.isEmpty ? app.bundleId : app.displayName)
                                 Spacer()
                                 Image(systemName: "chevron.right")
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                                     .font(.caption)
                             }
                             .frame(maxWidth: .infinity)
@@ -63,7 +63,7 @@ struct EscapeHatchView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Or name another app:")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 HStack {
                     TextField("App name", text: $customAppName)
@@ -84,7 +84,7 @@ struct EscapeHatchView: View {
         VStack(spacing: 20) {
             Text("Hold on…")
                 .font(.title2)
-                .fontWeight(.semibold)
+                .bold()
 
             ZStack {
                 Circle()
@@ -104,7 +104,7 @@ struct EscapeHatchView: View {
 
             Text("You asked to stay focused — just a moment.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
     }
@@ -115,11 +115,11 @@ struct EscapeHatchView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("You asked to focus — what changed?")
                 .font(.title3)
-                .fontWeight(.semibold)
+                .bold()
 
             Text("This exception will only apply for this specific app or URL, not your whole session.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             VStack(alignment: .trailing, spacing: 4) {
                 TextField(
@@ -132,7 +132,7 @@ struct EscapeHatchView: View {
 
                 Text("\(controller.reason.count) / 20 chars minimum")
                     .font(.caption)
-                    .foregroundColor(controller.isReasonValid ? .green : .secondary)
+                    .foregroundStyle(controller.isReasonValid ? .green : .secondary)
             }
 
             Button(action: {
@@ -152,15 +152,15 @@ struct EscapeHatchView: View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 44))
-                .foregroundColor(.green)
+                .foregroundStyle(.green)
 
             Text("Exception granted")
                 .font(.title3)
-                .fontWeight(.semibold)
+                .bold()
 
             Text("This exception has been logged. Returning to your session.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
     }
