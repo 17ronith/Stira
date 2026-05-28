@@ -122,6 +122,7 @@ final class SessionManager: ObservableObject {
         sessionStartTime = nil
         lastHermesEvent = nil
         auditLog = []
+        escapeHatchController.reset()
         state = .idle
     }
 
