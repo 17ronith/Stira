@@ -25,6 +25,7 @@ final class SessionManager: ObservableObject {
     private var hermesSocket = HermesSocket()
     private var auditLog: [HermesEvent] = []
     private var hermesProcess: Process?
+    var sessionTimeoutTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -108,6 +109,20 @@ final class SessionManager: ObservableObject {
         sessionStartTime = nil
         lastHermesEvent = nil
         auditLog = []
+        state = .idle
+    }
+
+    func handleHermesCrash(exitCode: Int32) {
+        guard state == .active || state == .escapeHatch else { return }
+        sessionTimeoutTask?.cancel()
+        sessionTimeoutTask = nil
+        escapeHatchController.reset()
+        policyStore.clearPolicy()
+        hermesProcess = nil
+        sessionStartTime = nil
+        lastHermesEvent = nil
+        auditLog = []
+        errorMessage = "Enforcement engine stopped unexpectedly (exit \(exitCode)). Session ended."
         state = .idle
     }
 
@@ -233,15 +248,17 @@ final class SessionManager: ObservableObject {
             if fm.fileExists(atPath: candidate.path) { return candidate }
         }
 
-        // c. Walk up 3 directories from executable then append "hermes"
-        //    Covers .build/debug/Stira -> .build/debug -> .build -> project_root -> hermes/
+        // c. Walk up from executable, checking each ancestor for an adjacent "hermes/" dir.
+        //    .build/debug/Stira         → needs 4 levels
+        //    .build/arm64-.../debug/Stira → needs 5 levels
+        //    Stira.app/Contents/MacOS/Stira → needs 3 levels (beside the .app)
         if let execURL = Bundle.main.executableURL {
             var candidate = execURL
-            for _ in 0..<3 {
+            for _ in 0..<6 {
                 candidate = candidate.deletingLastPathComponent()
+                let hermesCandidate = candidate.appendingPathComponent("hermes")
+                if fm.fileExists(atPath: hermesCandidate.path) { return hermesCandidate }
             }
-            let hermesCandidate = candidate.appendingPathComponent("hermes")
-            if fm.fileExists(atPath: hermesCandidate.path) { return hermesCandidate }
         }
 
         return nil
