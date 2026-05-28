@@ -72,8 +72,44 @@ final class OnboardingCoordinator: ObservableObject {
             }
         }
 
+        // Install native messaging manifest for browser extension
+        installNativeMessagingManifest()
+
         // Complete
         step = .complete
         isComplete = true
+    }
+
+    private func installNativeMessagingManifest() {
+        // Find StiraExtensionBridge binary alongside current executable
+        guard let execURL = Bundle.main.executableURL else { return }
+        let bridgeBinary = execURL.deletingLastPathComponent()
+            .appendingPathComponent("StiraExtensionBridge")
+
+        guard FileManager.default.fileExists(atPath: bridgeBinary.path) else {
+            // Binary not found — skip silently (happens in simulators/previews)
+            return
+        }
+
+        let manifestDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Google/Chrome/NativeMessagingHosts")
+
+        let manifest: [String: Any] = [
+            "name": "com.stira.extensionbridge",
+            "description": "Stira browser extension bridge",
+            "path": bridgeBinary.path,
+            "type": "stdio",
+            "allowed_origins": ["chrome-extension://kceccioddldmaiodjklbpfmlmiogcbkb/"]
+        ]
+
+        do {
+            try FileManager.default.createDirectory(at: manifestDir, withIntermediateDirectories: true)
+            let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
+            let manifestURL = manifestDir.appendingPathComponent("com.stira.extensionbridge.json")
+            try data.write(to: manifestURL, options: .atomic)
+        } catch {
+            // Non-fatal: extension won't work but enforcement still runs
+            print("[OnboardingCoordinator] Failed to install native messaging manifest: \(error)")
+        }
     }
 }
