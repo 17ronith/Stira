@@ -311,6 +311,13 @@ final class SessionManager: ObservableObject {
             "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
             "PYTHONUNBUFFERED": "1",
         ]
+        process.terminationHandler = { [weak self] proc in
+            guard let self else { return }
+            let exitCode = proc.terminationStatus
+            Task { @MainActor [weak self] in
+                self?.handleHermesCrash(exitCode: exitCode)
+            }
+        }
         try process.run()
         hermesProcess = process
     }
