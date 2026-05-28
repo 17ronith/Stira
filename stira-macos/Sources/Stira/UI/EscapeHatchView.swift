@@ -1,7 +1,8 @@
 // EscapeHatchView.swift
-// Standard-mode escape hatch: 30s immovable countdown, then neutral reason prompt.
+// Standard-mode escape hatch: app picker → 30s countdown → reason → granted.
 
 import SwiftUI
+import AppKit
 
 struct EscapeHatchView: View {
     @EnvironmentObject var sessionManager: SessionManager
@@ -22,7 +23,7 @@ struct EscapeHatchView: View {
                 EmptyView()
             }
         }
-        .frame(minWidth: 360, minHeight: 240)
+        .frame(minWidth: 380, minHeight: 260)
         .padding(28)
     }
 
@@ -31,50 +32,71 @@ struct EscapeHatchView: View {
     @State private var customAppName: String = ""
 
     private var appPickerView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Which app do you need?")
-                .font(.title3)
-                .bold()
-
-            if !controller.blockedApps.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(controller.blockedApps, id: \.bundleId) { app in
-                        Button(action: {
-                            controller.selectApp(bundleId: app.bundleId, displayName: app.displayName)
-                        }) {
-                            HStack {
-                                Text(app.displayName.isEmpty ? app.bundleId : app.displayName)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
-                                    .font(.caption)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Or name another app:")
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Which app do you need?")
+                    .font(.title2)
+                    .bold()
+                Text("A 30-second pause helps you make a mindful decision.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-
-                HStack {
-                    TextField("App name", text: $customAppName)
-                        .textFieldStyle(.roundedBorder)
-
-                    Button("Continue") {
-                        controller.selectCustomApp(name: customAppName)
-                    }
-                    .disabled(customAppName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
             }
+
+            if !controller.blockedApps.isEmpty {
+                VStack(spacing: 6) {
+                    ForEach(controller.blockedApps, id: \.bundleId) { app in
+                        appRow(app: app)
+                    }
+                    Divider()
+                    customAppField
+                }
+            } else {
+                customAppField
+            }
+
+            Button(role: .cancel) {
+                sessionManager.state = .active
+                controller.reset()
+            } label: {
+                Text("Stay focused")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private func appRow(app: AppRule) -> some View {
+        Button {
+            controller.selectApp(bundleId: app.bundleId, displayName: app.displayName)
+        } label: {
+            HStack(spacing: 12) {
+                appIcon(bundleId: app.bundleId)
+                    .frame(width: 28, height: 28)
+                Text(app.displayName.isEmpty ? app.bundleId : app.displayName)
+                    .font(.body)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.quaternary.opacity(0.5))
+            .clipShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var customAppField: some View {
+        HStack(spacing: 8) {
+            TextField("Other app name…", text: $customAppName)
+                .textFieldStyle(.roundedBorder)
+            Button("Open") {
+                guard !customAppName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                controller.selectCustomApp(name: customAppName)
+            }
+            .buttonStyle(.bordered)
+            .disabled(customAppName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 
@@ -82,13 +104,19 @@ struct EscapeHatchView: View {
 
     private func countdownView(remaining: Int) -> some View {
         VStack(spacing: 20) {
-            Text("Hold on…")
-                .font(.title2)
-                .bold()
+            VStack(spacing: 4) {
+                Text("Opening \(controller.currentTargetDisplayName ?? "app")…")
+                    .font(.title2)
+                    .bold()
+                Text("30 seconds — time to make a mindful call.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
 
             ZStack {
                 Circle()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 6)
+                    .stroke(.secondary.opacity(0.2), lineWidth: 6)
                     .frame(width: 90, height: 90)
 
                 Circle()
@@ -102,10 +130,20 @@ struct EscapeHatchView: View {
                     .font(.system(size: 30, weight: .medium, design: .monospaced))
             }
 
-            Text("You asked to stay focused — just a moment.")
-                .font(.subheadline)
+            Text("If you still need \(controller.currentTargetDisplayName ?? "it") after this, tell us why.")
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            Button(role: .cancel) {
+                sessionManager.state = .active
+                controller.reset()
+            } label: {
+                Text("Actually, I'm fine — stay focused")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .font(.subheadline)
         }
     }
 
@@ -113,61 +151,138 @@ struct EscapeHatchView: View {
 
     private var reasonEntryView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("You asked to focus — what changed?")
-                .font(.title3)
-                .bold()
-
-            Text("This exception will only apply for this specific app or URL, not your whole session.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Why do you need \(controller.currentTargetDisplayName ?? "this app")?")
+                    .font(.title3)
+                    .bold()
+                Text("This unblocks \(controller.currentTargetDisplayName ?? "the app") for 30 minutes. Your session stays active.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             VStack(alignment: .trailing, spacing: 4) {
                 TextField(
-                    "What do you need to access?",
+                    "e.g. Check message from cofounder about the launch",
                     text: $controller.reason,
                     axis: .vertical
                 )
                 .lineLimit(3...6)
                 .textFieldStyle(.roundedBorder)
 
-                Text("\(controller.reason.count) / 20 chars minimum")
-                    .font(.caption)
-                    .foregroundStyle(controller.isReasonValid ? .green : .secondary)
+                if controller.reason.count < 20 {
+                    Text("\(20 - controller.reason.count) more characters")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Good", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
             }
 
-            Button(action: {
-                sessionManager.handleEscapeHatchGrant()
-            }) {
-                Text("Allow exception")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 10) {
+                Button(role: .cancel) {
+                    sessionManager.state = .active
+                    controller.reset()
+                } label: {
+                    Text("Cancel")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    sessionManager.handleEscapeHatchGrant()
+                } label: {
+                    Text("Unlock \(controller.currentTargetDisplayName ?? "app")")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!controller.isReasonValid)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(!controller.isReasonValid)
         }
     }
 
     // MARK: - Granted
 
     private var grantedView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 44))
                 .foregroundStyle(.green)
 
-            Text("Exception granted")
-                .font(.title3)
-                .bold()
+            VStack(spacing: 4) {
+                Text("\(controller.currentTargetDisplayName ?? "App") is unlocked")
+                    .font(.title3)
+                    .bold()
+                Text("Unblocked for 30 minutes. Your focus session continues.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
 
-            Text("This exception has been logged. Returning to your session.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 10) {
+                if let bundleId = controller.currentTarget {
+                    Button {
+                        openApp(bundleId: bundleId)
+                    } label: {
+                        Label(
+                            "Open \(controller.currentTargetDisplayName ?? "App")",
+                            systemImage: "arrow.up.right.square"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Button {
+                    sessionManager.state = .active
+                } label: {
+                    Text("Back to my session")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func openApp(bundleId: String) {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func appIcon(bundleId: String) -> some View {
+        Group {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+                let nsImage = NSWorkspace.shared.icon(forFile: url.path)
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "app.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
 
+#Preview("App Picker") {
+    let controller = EscapeHatchController()
+    controller.beginEscapeHatch(blockedApps: [
+        AppRule(bundleId: "com.hnc.Discord", displayName: "Discord"),
+        AppRule(bundleId: "net.whatsapp.WhatsApp", displayName: "WhatsApp"),
+        AppRule(bundleId: "com.spotify.client", displayName: "Spotify"),
+    ])
+    return EscapeHatchView(controller: controller)
+        .environmentObject(SessionManager())
+}
+
 #Preview("Countdown") {
     let controller = EscapeHatchController()
+    controller.currentTargetDisplayName = "WhatsApp"
     controller.state = .countdown(remaining: 18)
     return EscapeHatchView(controller: controller)
         .environmentObject(SessionManager())
@@ -175,6 +290,8 @@ struct EscapeHatchView: View {
 
 #Preview("Reason entry") {
     let controller = EscapeHatchController()
+    controller.currentTargetDisplayName = "WhatsApp"
+    controller.currentTarget = "net.whatsapp.WhatsApp"
     controller.state = .reasonEntry
     return EscapeHatchView(controller: controller)
         .environmentObject(SessionManager())
@@ -182,6 +299,8 @@ struct EscapeHatchView: View {
 
 #Preview("Granted") {
     let controller = EscapeHatchController()
+    controller.currentTargetDisplayName = "WhatsApp"
+    controller.currentTarget = "net.whatsapp.WhatsApp"
     controller.state = .granted
     return EscapeHatchView(controller: controller)
         .environmentObject(SessionManager())
