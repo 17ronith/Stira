@@ -34,6 +34,14 @@ final class EscapeHatchController: ObservableObject {
         // Intentionally a no-op: the countdown cannot be cancelled.
     }
 
+    func reset() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        state = .idle
+        reason = ""
+        currentTarget = nil
+    }
+
     func submitReason() -> ScopedException? {
         guard isReasonValid else { return nil }
 
