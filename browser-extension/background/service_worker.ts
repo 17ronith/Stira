@@ -33,6 +33,8 @@ async function applyDNRRules(rules: DNRRule[]): Promise<void> {
     removeRuleIds,
     addRules: rules as unknown as chrome.declarativeNetRequest.Rule[],
   });
+  const domains = rules.map((r) => r.condition?.urlFilter ?? r.condition?.regexFilter ?? "?");
+  console.log(`[Stira] URL rules active (${rules.length}):`, domains);
 }
 
 /**
@@ -64,6 +66,7 @@ function handleNativeMessage(message: IncomingMessage): void {
       console.error("[Stira] Failed to apply updated policy rules:", err);
     });
   } else if (message.type === "session_ended") {
+    console.log("[Stira] Session ended — clearing all URL rules.");
     clearAllRules().catch((err: unknown) => {
       console.error("[Stira] Failed to clear rules on session end:", err);
     });

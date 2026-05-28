@@ -70,16 +70,18 @@ class SessionController:
     def start(self) -> None:
         """Initialise and start all three enforcement skills, then emit session_started."""
         logger.info("Starting session %s", self.session_id)
+        logger.info("Blocking apps: %s", self.blocked_bundle_ids)
 
         # FocusKiller is stateless — instantiated once
         self._killer = FocusKiller()
 
         def on_app_blocked(bundle_id: str) -> None:
+            logger.info("[BLOCKED] App suppressed: %s", bundle_id)
             self._emitter.emit_app_blocked(self.session_id, bundle_id)
-            # Kill focus on the blocked app
             pid = self._get_pid_for_bundle(bundle_id)
             if pid is not None:
                 self._killer.kill_focus(pid)
+                logger.info("[BLOCKED] Focus killed: %s (pid=%s)", bundle_id, pid)
                 self._emitter.emit_focus_killed(self.session_id, bundle_id)
 
         def on_app_opened(bundle_id: str) -> None:

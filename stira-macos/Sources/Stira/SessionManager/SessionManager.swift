@@ -24,6 +24,21 @@ final class SessionManager: ObservableObject {
 
     private var hermesSocket = HermesSocket()
     private var auditLog: [HermesEvent] = []
+    private var hermesProcess: Process?
+
+    // MARK: - Init
+
+    init() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.hermesProcess?.terminate()
+            }
+        }
+    }
 
     // MARK: - Session Lifecycle
 
@@ -36,6 +51,15 @@ final class SessionManager: ObservableObject {
 
         state = .starting
         errorMessage = nil
+
+        do {
+            try launchHermes()
+        } catch {
+            errorMessage = "Failed to launch enforcement engine: \(error.localizedDescription)"
+            state = .idle
+            return
+        }
+        try? await Task.sleep(nanoseconds: 500_000_000)
 
         do {
             let policy = try await callOllama(rawIntent: trimmed)
@@ -76,6 +100,8 @@ final class SessionManager: ObservableObject {
         // No separate extensionBridge.clearPolicy() call needed.
         writeAuditLog(sessionId: sessionId)
         policyStore.clearPolicy()
+        hermesProcess?.terminate()
+        hermesProcess = nil
 
         sessionStartTime = nil
         lastHermesEvent = nil
@@ -101,29 +127,50 @@ final class SessionManager: ObservableObject {
             throw NSError(domain: "SessionManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid Ollama URL"])
         }
 
-        guard let schemaData = StiraPolicy.schemaJSON.data(using: .utf8),
-              let schemaObj = try? JSONSerialization.jsonObject(with: schemaData) else {
-            throw NSError(domain: "SessionManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse policy schema"])
-        }
-
         let prompt = """
-        You are a focus session policy engine. Given the user's intent, produce a StiraPolicy JSON object.
-        Use schema_version "1.0". Generate a unique UUID for session_id.
-        Set intent.raw to the original input, intent.normalised to a lowercase version, intent.confidence to a value between 0.7-0.99.
-        Set session.duration_minutes to a reasonable value (60-120 for most tasks, 0 if indefinite), session.hard_stop to false.
-        For apps, choose mode "block_listed" and list commonly distracting apps for the stated task.
-        For urls, list commonly distracting URLs as blocked rules.
-        Set notifications.mode to "suppress_all".
-        Set escape_hatch.mode to "standard", delay_seconds to 30, require_reason to true, min_reason_chars to 20, exception_scope to "scoped", active_exceptions to [].
+        /no_think
+        Produce a JSON object for this focus session intent. Use EXACTLY this structure, no extra fields:
+        {
+          "schema_version": "1.0",
+          "session_id": "<new UUID>",
+          "intent": {"raw": "<original>", "normalised": "<lowercase>", "confidence": <0.7-0.99>},
+          "session": {"duration_minutes": <60-120>, "hard_stop": false},
+          "apps": {"mode": "block_listed", "blocked": [<app objects>], "allowed": []},
+          "urls": {"rules": [<url rules>]},
+          "notifications": {"mode": "suppress_all"},
+          "escape_hatch": {"mode": "standard", "delay_seconds": 30, "require_reason": true, "min_reason_chars": 20, "exception_scope": "scoped", "active_exceptions": []}
+        }
+        Each app object: {"bundle_id": "...", "display_name": "..."}
+        Each url rule: {"pattern": "domain.com", "action": "block", "reason": "...", "exceptions": []}
 
-        User intent: \(rawIntent)
+        App bundle IDs to choose from:
+        Social: com.twitter.twittermac(Twitter), com.burbn.instagram(Instagram), com.facebook.archon(Facebook), com.reddit.reddit(Reddit), com.linkedin.LinkedIn(LinkedIn)
+        Messaging: com.hnc.Discord(Discord), net.whatsapp.WhatsApp(WhatsApp), com.apple.MobileSMS(Messages), com.tinyspeck.slackmacgap(Slack), com.microsoft.teams(Teams), com.skype.skype(Skype), com.telegram.desktop(Telegram)
+        Entertainment: com.spotify.client(Spotify), com.apple.Music(Music), com.apple.TV(TV), com.netflix.Netflix(Netflix), com.plexapp.plex(Plex), com.twitch.twitch(Twitch)
+        Gaming: com.valvesoftware.steam(Steam), com.epicgames.EpicGamesLauncher(Epic Games), com.battle.net(Battle.net), com.riotgames.LeagueofLegends(League of Legends)
+        News/distraction: com.apple.News(News), com.reeder.Reeder5(Reeder)
+
+        URL domains to choose from:
+        Social: twitter.com, x.com, instagram.com, facebook.com, reddit.com, linkedin.com, tiktok.com, tumblr.com, pinterest.com
+        Entertainment: youtube.com, netflix.com, twitch.tv, primevideo.com, disneyplus.com, hulu.com, 9gag.com
+        News: news.ycombinator.com, buzzfeed.com, dailymail.co.uk, tmz.com
+        Shopping: amazon.com, ebay.com, etsy.com
+
+        For CODING: block Discord, Steam, Twitter, Reddit, Spotify, WhatsApp, Messages. Block urls: twitter.com, reddit.com, youtube.com, instagram.com, facebook.com, twitch.tv, tiktok.com.
+        For WRITING: block Messages, Discord, Slack, WhatsApp, Twitter, Instagram. Block urls: twitter.com, reddit.com, instagram.com, facebook.com, news.ycombinator.com, tiktok.com.
+        For STUDYING: block Discord, Steam, Spotify, Music, Netflix, Twitch, Twitter, Reddit. Block urls: youtube.com, twitter.com, reddit.com, netflix.com, twitch.tv, tiktok.com, instagram.com, 9gag.com.
+        For WORK/MEETINGS: block Steam, Spotify, Twitter, Reddit, Instagram, Netflix. Block urls: twitter.com, reddit.com, youtube.com, instagram.com, facebook.com, tiktok.com, amazon.com.
+        For READING: block all messaging, Discord, Steam, social apps. Block all social + entertainment urls.
+
+        Intent: \(rawIntent)
         """
 
         let requestBody: [String: Any] = [
             "model": "qwen3:8b",
             "prompt": prompt,
             "stream": false,
-            "format": schemaObj
+            "format": "json",
+            "options": ["num_predict": 1024]
         ]
 
         let bodyData = try JSONSerialization.data(withJSONObject: requestBody)
@@ -131,7 +178,7 @@ final class SessionManager: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = bodyData
-        request.timeoutInterval = 60
+        request.timeoutInterval = 180
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -145,14 +192,83 @@ final class SessionManager: ObservableObject {
         }
 
         let envelope = try JSONDecoder().decode(OllamaResponse.self, from: data)
+        print("[Ollama raw response]\n\(envelope.response)")
 
         guard let policyData = envelope.response.data(using: .utf8) else {
             throw NSError(domain: "SessionManager", code: -4, userInfo: [NSLocalizedDescriptionKey: "Failed to decode Ollama response string"])
         }
 
         let decoder = JSONDecoder()
-        let policy = try decoder.decode(StiraPolicy.self, from: policyData)
-        return policy
+        do {
+            let policy = try decoder.decode(StiraPolicy.self, from: policyData)
+            return policy
+        } catch {
+            print("[StiraPolicy decode error] \(error)")
+            throw error
+        }
+    }
+
+    // MARK: - Hermes Subprocess
+
+    private func hermesRoot() -> URL? {
+        let fm = FileManager.default
+
+        // a. Developer override via environment variable
+        if let envPath = ProcessInfo.processInfo.environment["HERMES_ROOT"] {
+            let url = URL(fileURLWithPath: envPath)
+            if fm.fileExists(atPath: url.path) { return url }
+        }
+
+        // b. Packaged app: Resources/hermes
+        if let resourceURL = Bundle.main.resourceURL {
+            let candidate = resourceURL.appendingPathComponent("hermes")
+            if fm.fileExists(atPath: candidate.path) { return candidate }
+        }
+
+        // c. Walk up 3 directories from executable then append "hermes"
+        //    Covers .build/debug/Stira -> .build/debug -> .build -> project_root -> hermes/
+        if let execURL = Bundle.main.executableURL {
+            var candidate = execURL
+            for _ in 0..<3 {
+                candidate = candidate.deletingLastPathComponent()
+            }
+            let hermesCandidate = candidate.appendingPathComponent("hermes")
+            if fm.fileExists(atPath: hermesCandidate.path) { return hermesCandidate }
+        }
+
+        return nil
+    }
+
+    private func findPython() -> URL? {
+        let fm = FileManager.default
+        let appleSilicon = URL(fileURLWithPath: "/opt/homebrew/bin/python3")
+        let intelHomebrew = URL(fileURLWithPath: "/usr/local/bin/python3")
+
+        if fm.fileExists(atPath: appleSilicon.path) { return appleSilicon }
+        if fm.fileExists(atPath: intelHomebrew.path) { return intelHomebrew }
+        return URL(fileURLWithPath: "/usr/bin/python3")
+    }
+
+    private func launchHermes() throws {
+        guard let root = hermesRoot() else {
+            throw NSError(domain: "SessionManager", code: -10,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot locate Hermes directory"])
+        }
+        guard let python = findPython() else {
+            throw NSError(domain: "SessionManager", code: -11,
+                          userInfo: [NSLocalizedDescriptionKey: "Cannot locate Python 3 interpreter"])
+        }
+
+        hermesProcess?.terminate()
+        hermesProcess = nil
+
+        let process = Process()
+        process.executableURL = python
+        process.arguments = ["-m", "stira.main"]
+        process.currentDirectoryURL = root
+        process.environment = ProcessInfo.processInfo.environment
+        try process.run()
+        hermesProcess = process
     }
 
     // MARK: - Helpers

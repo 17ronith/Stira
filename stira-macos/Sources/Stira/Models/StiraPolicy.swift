@@ -14,6 +14,15 @@ enum AppMode: String, Codable, Equatable {
 enum UrlAction: String, Codable, Equatable {
     case block = "block"
     case allow = "allow"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self).trimmingCharacters(in: .whitespaces).lowercased()
+        switch raw {
+        case "block": self = .block
+        case "allow": self = .allow
+        default: self = .block  // default to block on any malformed value
+        }
+    }
 }
 
 enum NotificationMode: String, Codable, Equatable {
@@ -62,6 +71,22 @@ struct UrlRule: Codable, Equatable {
     let action: UrlAction
     let exceptions: [UrlException]
     let reason: String
+
+    init(pattern: String, action: UrlAction, exceptions: [UrlException], reason: String) {
+        self.pattern = pattern; self.action = action; self.exceptions = exceptions; self.reason = reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pattern = try c.decode(String.self, forKey: .pattern)
+        action = try c.decode(UrlAction.self, forKey: .action)
+        reason = (try? c.decode(String.self, forKey: .reason)) ?? ""
+        exceptions = (try? c.decode([UrlException].self, forKey: .exceptions)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pattern, action, exceptions, reason
+    }
 }
 
 struct ScopedException: Codable, Equatable {

@@ -16,6 +16,7 @@ public struct StiraApp: App {
                 .environmentObject(sessionManager)
                 .environmentObject(onboardingCoordinator)
                 .task { await onboardingCoordinator.start() }
+                .onAppear { NSApp.activate(ignoringOtherApps: true) }
                 .sheet(isPresented: Binding(
                     get: { sessionManager.state == .escapeHatch },
                     set: { _ in }
