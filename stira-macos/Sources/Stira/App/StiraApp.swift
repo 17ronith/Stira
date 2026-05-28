@@ -4,7 +4,19 @@
 import SwiftUI
 import AppKit
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            for window in sender.windows { window.makeKeyAndOrderFront(nil) }
+        }
+        sender.activate(ignoringOtherApps: true)
+        return true
+    }
+}
+
 public struct StiraApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     public init() {}
 
     @StateObject private var sessionManager = SessionManager()

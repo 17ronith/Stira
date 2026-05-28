@@ -133,9 +133,11 @@ final class HermesSocket: ObservableObject {
             throw error
         }
 
-        // Start reading events in background
+        // Start reading events in background — MUST be nonisolated to avoid
+        // blocking Darwin.read() on the main actor.
+        let capturedFd = socketFd
         Task.detached { [weak self] in
-            await self?.readEventLoop()
+            await self?.readEventLoop(fd: capturedFd)
         }
     }
 
@@ -258,10 +260,10 @@ final class HermesSocket: ObservableObject {
 
     // MARK: - Read Loop
 
-    private func readEventLoop() async {
-        let fd = await MainActor.run { socketFd }
+    // nonisolated so Darwin.read() runs on a background thread, never blocking the main actor.
+    private nonisolated func readEventLoop(fd: Int32) async {
         guard fd >= 0 else { return }
-
+        let localDecoder = JSONDecoder()
         var buffer = Data()
         let chunkSize = 4096
 
@@ -275,24 +277,21 @@ final class HermesSocket: ObservableObject {
 
             buffer.append(chunk.prefix(bytesRead))
 
-            // Parse newline-delimited JSON
             while let newlineRange = buffer.range(of: Data([0x0A])) {
                 let lineData = buffer[buffer.startIndex..<newlineRange.lowerBound]
                 buffer.removeSubrange(buffer.startIndex...newlineRange.lowerBound)
 
-                if let event = try? decoder.decode(HermesEvent.self, from: lineData) {
-                    let capturedEvent = event
-                    _ = await MainActor.run {
-                        self._eventsContinuation?.yield(capturedEvent)
+                if let event = try? localDecoder.decode(HermesEvent.self, from: lineData) {
+                    _ = await MainActor.run { [weak self] in
+                        self?._eventsContinuation?.yield(event)
                     }
                 }
             }
         }
 
-        // Signal end to the continuation (but do NOT finish — resetEventStream handles lifecycle)
-        await MainActor.run {
-            _eventsContinuation?.finish()
-            _eventsContinuation = nil
+        await MainActor.run { [weak self] in
+            self?._eventsContinuation?.finish()
+            self?._eventsContinuation = nil
         }
     }
 }
