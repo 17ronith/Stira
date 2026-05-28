@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stira | Intent-shaped focus for macOS</title>
+    <meta
+      name="description"
+      content="Stira is a local-first macOS app that reshapes your digital environment around a plain-language intent."
+    >
+    <link rel="icon" href="assets/stira-logo.png">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="cursor-light" aria-hidden="true"></div>
+    <header class="site-header" data-reveal>
+      <a class="brand" href="#top" aria-label="Stira home">
+        <img src="assets/stira-logo-cutout.png" alt="" width="54" height="36">
+        <span>Stira</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#how">How it works</a>
+        <a href="#local">Local-first</a>
+        <a href="#mvp">MVP</a>
+        <a href="#waitlist">Waitlist</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero section-band">
+        <img class="hero-bloom" src="assets/stira-logo-cutout.png" alt="" aria-hidden="true">
+        <div class="hero-copy" data-reveal>
+          <p class="eyebrow">Local-first focus for macOS</p>
+          <h1>Stira</h1>
+          <p class="hero-tagline">Intent-shaped focus for a Mac that takes the hint.</p>
+          <p class="hero-lede">
+            Say what you came to do. Stira translates that into a local policy,
+            quiets the wrong apps and routes, and keeps the session honest
+            without judging you for needing an escape hatch.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a
+              class="button primary"
+              href="https://github.com/17ronith/Stira"
+              target="_blank"
+              rel="noreferrer"
+            >Get early access</a>
+            <a class="button secondary" href="#demo">See the loop</a>
+          </div>
+          <dl class="hero-stats">
+            <div>
+              <dt>&lt; 10s</dt>
+              <dd>intent to visible change</dd>
+            </div>
+            <div>
+              <dt>1 ask</dt>
+              <dd>Accessibility only at launch</dd>
+            </div>
+            <div>
+              <dt>0 cloud</dt>
+              <dd>no backend, telemetry, or account</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="hero-stage" data-reveal>
+          <div class="lotus-shell" aria-hidden="true">
+            <img class="lotus" src="assets/stira-logo-cutout.png" alt="">
+            <span class="orbit one"></span>
+            <span class="orbit two"></span>
+            <span class="orbit three"></span>
+          </div>
+          <div class="session-console" id="demo" aria-label="Stira session demo">
+            <div class="console-top">
+              <span></span><span></span><span></span>
+              <strong>Writing session</strong>
+            </div>
+            <div class="intent-line">
+              <span>Intent</span>
+              <b>I need to draft the launch essay for 50 minutes.</b>
+            </div>
+            <div class="policy-grid">
+              <article>
+                <small>Allowed</small>
+                <b>Pages, Notes, Linear</b>
+              </article>
+              <article>
+                <small>Blocked</small>
+                <b>X, Instagram, Reddit</b>
+              </article>
+              <article>
+                <small>Browser</small>
+                <b>YouTube /watch only</b>
+              </article>
+              <article>
+                <small>Escape</small>
+                <b>30s + reason</b>
+              </article>
+            </div>
+            <div class="activity-log" aria-label="Sample enforcement log">
+              <p><span></span> Focus policy compiled locally</p>
+              <p><span></span> Slack notification posture set to quiet</p>
+              <p><span></span> twitter.com blocked before load</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="problem section-band" data-reveal>
+        <p class="section-kicker">The gap</p>
+        <h2>Your computer does not know why you opened it.</h2>
+        <p>
+          Most focus tools ask you to manually author rules: block these apps,
+          allow those websites, start a timer, hope the rules match the task.
+          Stira flips the authorship. You give the reason. The machine derives
+          the boundaries.
+        </p>
+      </section>
+
+      <section class="flow section-band" id="how">
+        <div class="section-heading" data-reveal>
+          <p class="section-kicker">The loop</p>
+          <h2>One declaration, three local systems.</h2>
+        </div>
+        <div class="flow-rail" aria-label="Stira architecture flow">
+          <article class="flow-card" data-reveal>
+            <span>01</span>
+            <h3>Intent engine</h3>
+            <p>
+              A local Qwen model turns plain language into a structured policy:
+              apps, routes, duration, confidence, notification posture, and
+              scoped exceptions.
+            </p>
+          </article>
+          <article class="flow-card" data-reveal>
+            <span>02</span>
+            <h3>Hermes enforcement</h3>
+            <p>
+              A background macOS layer reads the policy and handles app focus:
+              suppressing blocked apps, killing drift, and logging session
+              events.
+            </p>
+          </article>
+          <article class="flow-card" data-reveal>
+            <span>03</span>
+            <h3>Browser extension</h3>
+            <p>
+              URL rules catch what the OS cannot see inside the browser, with
+              path-level exceptions like allowing lecture videos while blocking
+              the rest.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="local section-band" id="local">
+        <div class="local-copy" data-reveal>
+          <p class="section-kicker">Local by default</p>
+          <h2>No dashboard watching you watch yourself.</h2>
+          <p>
+            Stira has no cloud backend, no remote database, and no telemetry.
+            Intent parsing runs on your Mac for the MVP. The policy is enforced
+            locally. Session memory stays scoped to your install.
+          </p>
+        </div>
+        <div class="privacy-stack" data-reveal>
+          <div class="privacy-row">
+            <b>Intent</b>
+            <span>typed locally</span>
+          </div>
+          <div class="privacy-row">
+            <b>Policy</b>
+            <span>compiled locally</span>
+          </div>
+          <div class="privacy-row">
+            <b>Enforcement</b>
+            <span>lookup, not live inference</span>
+          </div>
+          <div class="privacy-row">
+            <b>Memory</b>
+            <span>per-user install</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="escape section-band">
+        <div class="escape-card" data-reveal>
+          <div>
+            <p class="section-kicker">The override</p>
+            <h2>Firm boundaries. Human language.</h2>
+          </div>
+          <p>
+            When you push against a session, Stira does not scold. It asks what
+            changed, waits, then grants only the scoped exception you chose.
+          </p>
+          <div class="escape-dialog" aria-label="Escape hatch example">
+            <p>You asked to stay in writing mode.</p>
+            <strong>Open Reddit for how long?</strong>
+            <div>
+              <button type="button">10 min</button>
+              <button type="button">Until session ends</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="mvp section-band" id="mvp">
+        <div class="section-heading" data-reveal>
+          <p class="section-kicker">MVP promise</p>
+          <h2>The first version earns trust before asking for more.</h2>
+        </div>
+        <div class="mvp-grid">
+          <article data-reveal>
+            <h3>What ships first</h3>
+            <ul>
+              <li>Plain-language intent input</li>
+              <li>Ollama + Qwen policy generation</li>
+              <li>Native app focus enforcement</li>
+              <li>Chrome URL-rule extension</li>
+              <li>Standard escape hatch</li>
+            </ul>
+          </article>
+          <article data-reveal>
+            <h3>What waits</h3>
+            <ul>
+              <li>Remote model fallback</li>
+              <li>DOM and vision-based browser control</li>
+              <li>Manual policy editor</li>
+              <li>Analytics dashboard</li>
+              <li>Extra permissions before value is proven</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="waitlist section-band" id="waitlist">
+        <div data-reveal>
+          <p class="section-kicker">Early access on GitHub</p>
+          <h2>Built for people who want their Mac to take the hint.</h2>
+        </div>
+        <form class="signup" data-reveal>
+          <label for="email">Email</label>
+          <div>
+            <input id="email" name="email" type="email" placeholder="you@example.com">
+            <button type="submit">Join waitlist</button>
+          </div>
+          <p>
+            For now, early access points to the GitHub project. The form opens a
+            prefilled waitlist email until a proper signup backend is connected.
+          </p>
+        </form>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top" aria-label="Back to top">
+        <img src="assets/stira-logo-cutout.png" alt="" width="48" height="32">
+        <span>Stira</span>
+      </a>
+      <p>Intent-shaped computing. Local first.</p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

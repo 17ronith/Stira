@@ -23,9 +23,7 @@ stira-macos/.swiftpm/xcode/
 
 # Screenshots / design assets (large binaries, not needed in source)
 stira-*.png
-
-# Website (unreleased)
-website/
+!website/assets/stira-*.png
 
 # Internal AI planning docs
 docs/superpowers/plans/2026-05-28-*.md
