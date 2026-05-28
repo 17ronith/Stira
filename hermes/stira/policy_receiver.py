@@ -94,6 +94,11 @@ class PolicyReceiver:
                     self._handle_raw_line(line)
         except Exception as exc:
             logger.warning("Error serving connection: %s", exc)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     def start(self) -> None:
         """Start the socket server in a background thread."""

@@ -162,6 +162,10 @@ def main() -> None:
                 conn_writer.close()
             except Exception:
                 pass
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     receiver._serve_connection = _serve_connection_with_emitter
 
