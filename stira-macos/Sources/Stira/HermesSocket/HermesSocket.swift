@@ -282,9 +282,12 @@ final class HermesSocket: ObservableObject {
                 buffer.removeSubrange(buffer.startIndex...newlineRange.lowerBound)
 
                 if let event = try? localDecoder.decode(HermesEvent.self, from: lineData) {
+                    print("[HermesSocket] decoded event: \(event.type) bundleId=\(event.bundleId ?? "nil")")
                     _ = await MainActor.run { [weak self] in
                         self?._eventsContinuation?.yield(event)
                     }
+                } else if !lineData.isEmpty {
+                    print("[HermesSocket] decode FAILED: \(String(data: lineData, encoding: .utf8) ?? "<binary>")")
                 }
             }
         }

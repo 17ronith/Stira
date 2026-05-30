@@ -127,10 +127,10 @@ class PolicyReceiver:
                 self._server_socket.close()
             except Exception:
                 pass
-        try:
-            os.unlink(self.socket_path)
-        except FileNotFoundError:
-            pass
+        # Do NOT unlink the socket here. start() already removes stale sockets on
+        # startup. Unlinking during stop() races with a concurrently-launching new
+        # Hermes instance: pkill's waitUntilExit returns before the SIGTERM handler
+        # finishes, so this unlink can delete the new instance's freshly-bound socket.
 
     def _accept_loop(self) -> None:
         """Accept connections until stopped."""

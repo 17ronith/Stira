@@ -87,12 +87,15 @@ final class SessionManager: ObservableObject {
             // Start listening for Hermes events in the background
             Task { [weak self] in
                 guard let self = self else { return }
+                print("[SessionManager] starting event consumer")
                 for await event in self.hermesSocket.events {
+                    print("[SessionManager] received event: \(event.type)")
                     await MainActor.run {
                         self.lastHermesEvent = event
                         self.auditLog.append(event)
                     }
                 }
+                print("[SessionManager] event stream ended")
             }
         } catch {
             sessionTimeoutTask?.cancel()
@@ -209,7 +212,7 @@ final class SessionManager: ObservableObject {
             "prompt": prompt,
             "stream": false,
             "format": "json",
-            "options": ["num_predict": 2048]
+            "options": ["num_predict": -1]
         ]
 
         let bodyData = try JSONSerialization.data(withJSONObject: requestBody)

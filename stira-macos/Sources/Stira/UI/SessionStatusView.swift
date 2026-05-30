@@ -6,6 +6,7 @@ import AppKit
 
 struct SessionStatusView: View {
     @EnvironmentObject var sessionManager: SessionManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var now: Date = Date()
     @State private var showEndConfirmation: Bool = false
     @State private var showToast = false
@@ -58,18 +59,19 @@ struct SessionStatusView: View {
         .overlay(alignment: .top) {
             if showToast, let name = toastDisplayName {
                 blockedToastPill(bundleId: toastBundleId, name: name)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .top).combined(with: .opacity))
                     .padding(.top, 16)
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: showToast)
         .onChange(of: sessionManager.lastHermesEvent) { _, event in
+            print("[SessionStatusView] onChange fired: \(String(describing: event?.type))")
             guard let event,
                   event.type == "app_blocked" || event.type == "focus_killed",
                   let bundleId = event.bundleId else { return }
             let name = blockedApps.first { $0.bundleId == bundleId }?.displayName
                 ?? bundleId.components(separatedBy: ".").last?.capitalized
                 ?? bundleId
+            print("[SessionStatusView] triggering toast for \(bundleId)")
             triggerBlockedToast(bundleId: bundleId, displayName: name)
         }
     }
@@ -223,11 +225,23 @@ struct SessionStatusView: View {
         toastDismissTask?.cancel()
         toastBundleId = bundleId
         toastDisplayName = displayName
-        showToast = true
+
+        // FocusKiller activates Finder after each block, pushing Stira behind it.
+        // Bring the Stira window back to front so the toast is actually visible.
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { !$0.isMiniaturized })?.makeKeyAndOrderFront(nil)
+
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
+            showToast = true
+        }
         toastDismissTask = Task {
             try? await Task.sleep(for: .seconds(3.5))
             guard !Task.isCancelled else { return }
-            await MainActor.run { showToast = false }
+            await MainActor.run {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
+                    showToast = false
+                }
+            }
         }
     }
 
@@ -243,7 +257,7 @@ struct SessionStatusView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassCard(cornerRadius: 20, fillOpacity: 0.12)
+        .glassCard(cornerRadius: 20, fillOpacity: 0.3)
     }
 }
 

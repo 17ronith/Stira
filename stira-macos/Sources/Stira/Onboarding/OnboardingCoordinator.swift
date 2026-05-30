@@ -3,6 +3,7 @@
 
 import Foundation
 import ApplicationServices
+import AppKit
 
 enum OnboardingStep: Equatable {
     case checkingRAM
@@ -23,10 +24,17 @@ final class OnboardingCoordinator: ObservableObject {
     private var permissionTrigger: AsyncStream<Void>.Continuation?
 
     func recheckPermission() {
-        // AXIsProcessTrusted() is unreliable for ad-hoc signed binaries on macOS 26:
-        // TCC ties the entry to the build hash, so every swift build invalidates it.
-        // Trust the user's manual confirmation and finish the stream to proceed.
         permissionTrigger?.finish()
+    }
+
+    // AXIsProcessTrusted() is unreliable on macOS 26 for ad-hoc signed debug builds —
+    // TCC ties the grant to the binary hash, so every swift run invalidates the entry.
+    // Attempt a real AX read instead: if it succeeds the permission is actually granted.
+    private func isAccessibilityFunctional() -> Bool {
+        let systemWide = AXUIElementCreateSystemWide()
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &value)
+        return result == .success
     }
 
     func start() async {
@@ -68,7 +76,7 @@ final class OnboardingCoordinator: ObservableObject {
         }
 
         // Step 4: Accessibility permission
-        if !AXIsProcessTrusted() {
+        if !isAccessibilityFunctional() {
             step = .awaitingPermission
             // Trigger the system prompt — this registers the current binary with TCC so the
             // correct entry appears in System Settings (manual "+" navigation picks wrong path).
@@ -113,7 +121,7 @@ final class OnboardingCoordinator: ObservableObject {
         }
 
         for await _ in stream {
-            if AXIsProcessTrusted() { return }
+            if isAccessibilityFunctional() { return }
         }
         // Stream finished via recheckPermission() — user confirmed manually, proceed.
     }

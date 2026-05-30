@@ -279,3 +279,109 @@ An installer and first-run flow that handles Ollama installation, qwen3:8b model
 The MVP acceptance criterion is the 10-second test: user declares intent, environment visibly changes, within 10 seconds, with one permission ask.
 Before writing any code, produce the policy schema first and wait for my approval. Then build one component at a time and wait for my sign-off before proceeding to the next.
 
+---
+
+## Implementation Notes — Bugs Found and Fixed in Development
+
+These are runtime issues discovered during the first real end-to-end run. Document them so future sessions don't repeat the investigation.
+
+### 1. Hermes subprocess was never launched (CRITICAL)
+`SessionManager.startSession()` called `hermesSocket.startSession()` directly without first launching the Hermes Python subprocess. Fixed by adding `launchHermes()` at the top of `startSession()`, before the 0.5s sleep and the Ollama call.
+
+### 2. Escape hatch exceptions never reached Hermes (CRITICAL)
+`handleEscapeHatchGrant()` in `SessionManager` updated the in-Swift `PolicyStore` via `applyException()` but never sent an `apply_exception` message over the Unix socket to Hermes. Hermes's `AppSuppressor` kept the bundle ID blocked. Fixed by adding `apply_exception` as a new IPC message type, wiring it through `policy_receiver.py` → `session_controller.py` → `app_suppressor.unblock()`.
+
+### 3. `hermesRoot()` walked too few directory levels (CRITICAL for `swift run`)
+The original code walked 3 levels up from the executable. When running `swift run`, the binary lives at `stira-macos/.build/debug/Stira` — 3 levels up lands at `stira-macos/`, not the project root where `hermes/` lives. `swift build` arch-specific paths (`.build/arm64-apple-macosx/debug/Stira`) need 5 levels. Fixed: iterate up to 6 levels and return on the first ancestor that contains a `hermes/` subdirectory.
+
+### 4. Native messaging manifest installed at dev path instead of real binary path (HIGH)
+`OnboardingCoordinator.installNativeMessagingManifest()` was not present — it was added during the fix cycle. The manifest is now written at the end of onboarding, pointing to the actual `StiraExtensionBridge` binary found alongside the running executable. Non-fatal if the bridge binary isn't present (development without the extension).
+
+### 5. `AppSuppressor` had a race condition on `blocked_bundle_ids` (HIGH)
+The list was read on the NSRunLoop/main thread (from `appDidActivate_` notifications) and mutated from the socket serve thread (on `apply_exception` and `unblock()`). Fixed by adding `threading.Lock` protecting all reads and writes.
+
+### 6. `AXIsProcessTrusted()` unreliable on macOS 26 for debug builds (PLATFORM BUG)
+On macOS 26 Tahoe (Darwin 25), TCC ties accessibility permission entries to the binary's code hash at grant time. Every `swift build` / `swift run` produces a new ad-hoc signed binary with a different hash, making the old TCC entry invalid even while the System Settings toggle shows ON. `AXIsProcessTrusted()` returns false despite the toggle being enabled.
+**Workaround implemented:**
+- Call `AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true])` on first entering the permission step — this shows the system dialog and registers the *current* binary with TCC.
+- Add `DistributedNotificationCenter` listener for `com.apple.accessibility.api` for immediate auto-detection when it works.
+- Add a "I've granted permission — continue" button that calls `permissionTrigger?.finish()` to force-proceed without re-checking `AXIsProcessTrusted()`, trusting the user's manual confirmation.
+- **For production builds** (signed with a stable Developer ID), `AXIsProcessTrusted()` works correctly. This issue only affects debug builds.
+
+### 7. `OllamaInstaller.launchOllamaApp()` only handled the `.app` bundle path
+Added fallback: if `~/Applications/Ollama.app` is not found, try `/opt/homebrew/bin/ollama serve` and `/usr/local/bin/ollama serve` as a subprocess. Required for developers who installed Ollama via Homebrew without the GUI app.
+
+### 8. Unix socket connection file descriptor leak
+`policy_receiver._serve_connection()` and the custom `_serve_connection_with_emitter()` in `main.py` both lacked `finally: conn.close()`. Fixed with `try/finally` blocks.
+
+### 9. Dead code — PolicySchema.schemaJSON and intent-engine Python package
+`stira-macos/Sources/Stira/Models/PolicySchema.swift` contained a static `schemaJSON` string that was never referenced at runtime (Ollama constrained decoding is driven by the `StiraPolicy` Codable schema directly). The `hermes/intent-engine/` Python prototype directory was never git-tracked. Both removed.
+
+---
+
+## Hermes Python Dependencies
+
+Hermes uses `pyobjc` for all macOS API calls (NSWorkspace, NSRunningApplication). This package is **not installed by default** — it must be present for `AppSuppressor`, `AppMonitor`, and `FocusKiller` to function.
+
+Install for development:
+```bash
+cd hermes && pip install -e ".[macos,dev]"
+```
+
+For the installer/distribution build, Python and pyobjc must either be bundled alongside the app or installed automatically as part of the setup flow. See Pre-MVP Gaps below.
+
+The three skills gracefully degrade if pyobjc is absent (log warnings, no-op enforcement), which is correct for CI but wrong for production.
+
+---
+
+## Enforcement Does Not Require Explicit Accessibility Permission
+
+Contrary to what the CLAUDE.md architecture section implies, none of the three MVP enforcement skills require macOS Accessibility permission:
+- `AppSuppressor` — uses `NSWorkspace.didActivateApplicationNotification` and `NSRunningApplication.hide()`. No AX required.
+- `FocusKiller` — activates Finder via `NSWorkspace` + `NSRunningApplication.activateWithOptions_()`. No AX required.
+- `AppMonitor` — listens to `NSWorkspace` app launch notifications. No AX required.
+
+The Accessibility permission screen in onboarding is correct to show (it will be needed post-MVP when deeper window control is added), but the app will function without it in the current MVP scope. The onboarding screen is therefore informational rather than a hard gate — which is why the manual "I've granted it" bypass is safe.
+
+---
+
+## Pre-MVP Gaps
+
+Ordered by priority. Items marked [BLOCKING] will prevent a working demo.
+
+### Functional Gaps
+
+1. **[BLOCKING] pyobjc not bundled or auto-installed** — Hermes's three enforcement skills silently no-op if `pyobjc` is missing. For a demo, the developer must manually run `pip install -e ".[macos]"` in `hermes/`. For distribution, this must be automated in the setup flow or bundled.
+
+2. **[BLOCKING] Session timer not enforced** — `session_duration_seconds` is included in the `HermesTaskSpec` sent to Hermes, but nothing auto-ends the session when that duration expires. `SessionStatusView` shows elapsed time but has no countdown or auto-stop. Either Hermes needs a timer skill or Swift's `SessionManager` needs to call `endSession()` after the policy duration.
+
+3. **[BLOCKING] StiraExtensionBridge binary not built or bundled** — The native messaging manifest correctly points to `StiraExtensionBridge` beside the main executable, but `StiraExtensionBridge` is a separate build target. It needs to be built and present for the browser extension to receive policies. Without it the Chrome extension is inert.
+
+4. **Python not available on user machines** — `findPython()` checks Homebrew paths and `/usr/bin/python3`. Most users don't have Python installed. Distribution requires either bundling a Python runtime in `Resources/` or using a pre-built self-contained Hermes binary (e.g. via PyInstaller).
+
+5. **Hermes crash recovery** — No watchdog or restart logic. If Hermes crashes mid-session, the Swift app remains in `.active` state indefinitely with a dead socket. Needs a `Process.terminationHandler` that clears state or restarts.
+
+6. **`findPython()` returns `/usr/bin/python3` stub on macOS** — The system path on macOS points to an Xcode command-line tools stub that prompts for installation rather than running Python. Current code added `fileExists` check, but `fileExists` returns true for the stub. Should validate by running `python3 --version` or checking for a real site-packages.
+
+### UI/UX Gaps
+
+7. **IntentInputView is bare** — No branding, no example intents, no visual hierarchy. At minimum needs: app icon/wordmark, 2–3 example intent chips ("focus on coding", "write without distractions", "deep reading"), and a subtle animation on submission.
+
+8. **SessionStatusView lacks remaining time** — Shows elapsed time but the policy has a `durationMinutes`. Should show "X minutes remaining" prominently and transition to a warning state in the last 5 minutes.
+
+9. **No session intent summary** — Once a session starts, the user has no way to see what apps/URLs were blocked. The session view should show the policy intent label and a collapsed list of what's being blocked.
+
+10. **Onboarding needs visual polish** — Steps feel disconnected. A persistent progress indicator (step 1/4, 2/4…) would help. The model download view already has a progress bar; the permission and Ollama steps feel different.
+
+11. **No menu bar icon** — The app lives in a regular window. For a focus tool, a menu bar presence (status icon showing session active/idle) is table-stakes UX. The main window can remain but the menu bar should reflect session state.
+
+12. **Escape hatch "I need a break" trigger is wrong** — Currently uses `lastHermesEvent?.bundleId` as the exception target, which is the last *blocked* app. This means clicking "I need a break" generically targets whatever was blocked last, not what the user is actually trying to open. Should present a picker or text field for the target app.
+
+### Distribution & Signing
+
+13. **No code signing configuration** — Debug builds break AX permission on every rebuild (see §Implementation Notes #6). Production distribution requires Developer ID signing, which also enables Gatekeeper and notarisation. The Xcode project needs a signing configuration.
+
+14. **Hermes not bundled in app Resources** — For distribution, `hermes/` must be embedded in `Stira.app/Contents/Resources/hermes/`. `hermesRoot()` already handles this via the `Bundle.main.resourceURL` path, but the Xcode build phase to copy the directory doesn't exist yet.
+
+15. **Chrome extension not published** — The extension ID `kceccioddldmaiodjklbpfmlmiogcbkb` is hardcoded. This is valid only if the extension is published to the Chrome Web Store under that ID, or installed as an unpacked developer extension. For distribution, the extension needs to be published and the ID confirmed.
+

@@ -9,6 +9,11 @@ import Foundation
 enum AppMode: String, Codable, Equatable {
     case blockListed = "block_listed"
     case allowListed = "allow_listed"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = AppMode(rawValue: raw) ?? .blockListed
+    }
 }
 
 enum UrlAction: String, Codable, Equatable {
@@ -20,7 +25,7 @@ enum UrlAction: String, Codable, Equatable {
         switch raw {
         case "block": self = .block
         case "allow": self = .allow
-        default: self = .block  // default to block on any malformed value
+        default: self = .block
         }
     }
 }
@@ -30,6 +35,11 @@ enum NotificationMode: String, Codable, Equatable {
     case allowAll = "allow_all"
     case allowCalendar = "allow_calendar"
     case allowCallsOnly = "allow_calls_only"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = NotificationMode(rawValue: raw) ?? .suppressAll
+    }
 }
 
 enum EscapeHatchMode: String, Codable, Equatable {
@@ -37,16 +47,31 @@ enum EscapeHatchMode: String, Codable, Equatable {
     case standard = "standard"
     case strict = "strict"
     case nuclear = "nuclear"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = EscapeHatchMode(rawValue: raw) ?? .standard
+    }
 }
 
 enum ExceptionScope: String, Codable, Equatable {
     case scoped = "scoped"
     case global = "global"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ExceptionScope(rawValue: raw) ?? .scoped
+    }
 }
 
 enum TargetType: String, Codable, Equatable {
     case app = "app"
     case url = "url"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = TargetType(rawValue: raw) ?? .app
+    }
 }
 
 // MARK: - Nested Types
@@ -170,7 +195,7 @@ struct EscapeHatchConfig: Codable, Equatable {
 
 // MARK: - Top-Level Policy
 
-struct StiraPolicy: Codable, Equatable {
+struct StiraPolicy: Encodable, Equatable {
     let schemaVersion: String   // const "1.0"
     let sessionId: String
     let intent: IntentInfo
@@ -190,6 +215,7 @@ struct StiraPolicy: Codable, Equatable {
         case notifications
         case escapeHatch = "escape_hatch"
     }
+
 }
 
 // MARK: - Example
@@ -230,6 +256,25 @@ extension StiraPolicy {
             activeExceptions: []
         )
     )
+}
+
+// The model sometimes omits notifications/escape_hatch when it runs out of token budget.
+// Provide safe defaults so sessions still start rather than failing with a decode error.
+extension StiraPolicy: Decodable {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = (try? c.decode(String.self, forKey: .schemaVersion)) ?? "1.0"
+        sessionId = try c.decode(String.self, forKey: .sessionId)
+        intent = try c.decode(IntentInfo.self, forKey: .intent)
+        session = try c.decode(SessionInfo.self, forKey: .session)
+        apps = try c.decode(AppsConfig.self, forKey: .apps)
+        urls = (try? c.decode(UrlsConfig.self, forKey: .urls)) ?? UrlsConfig(rules: [])
+        notifications = (try? c.decode(NotificationsConfig.self, forKey: .notifications))
+            ?? NotificationsConfig(mode: .suppressAll)
+        escapeHatch = (try? c.decode(EscapeHatchConfig.self, forKey: .escapeHatch))
+            ?? EscapeHatchConfig(mode: .standard, delaySeconds: 30, requireReason: true,
+                                 minReasonChars: 20, exceptionScope: .scoped, activeExceptions: [])
+    }
 }
 
 extension StiraPolicy {
