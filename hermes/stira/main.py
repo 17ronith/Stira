@@ -169,45 +169,53 @@ def main() -> None:
 
     receiver._serve_connection = _serve_connection_with_emitter
 
-    # SIGTERM handler for clean shutdown
-    def _handle_sigterm(signum, frame):
-        logger.info("SIGTERM received — shutting down")
+    def _shutdown(reason: str) -> None:
+        logger.info("%s — shutting down", reason)
         ctrl = _state.get("controller")
         if ctrl is not None:
             try:
                 ctrl.stop()
             except Exception as exc:
-                logger.warning("Error stopping session on SIGTERM: %s", exc)
+                logger.warning("Error stopping session during shutdown: %s", exc)
         receiver.stop()
         # os._exit avoids raising SystemExit into Objective-C's NSRunLoop,
         # which would cause OC_PythonException crashes in PyObjC.
         os._exit(0)
 
-    signal.signal(signal.SIGTERM, _handle_sigterm)
+    signal.signal(signal.SIGTERM, lambda s, f: _shutdown("SIGTERM received"))
+    # SIGINT is sent to the whole process group when the user hits Ctrl+C in
+    # the terminal running swift run. Without this handler, NSRunLoop swallows
+    # the signal and Hermes keeps blocking apps as an orphan.
+    signal.signal(signal.SIGINT, lambda s, f: _shutdown("SIGINT received"))
+
+    # Watchdog: if Stira exits without sending a signal (crash, force-quit, etc.),
+    # the parent PID changes to launchd. Detect this and exit cleanly so the
+    # AppSuppressor doesn't keep blocking apps as an orphan process.
+    _original_ppid = os.getppid()
+
+    def _parent_watchdog() -> None:
+        import time
+        while True:
+            time.sleep(2)
+            if os.getppid() != _original_ppid:
+                logger.info("Parent process died (ppid %d → %d) — exiting", _original_ppid, os.getppid())
+                os._exit(0)
+
+    import threading
+    threading.Thread(target=_parent_watchdog, daemon=True, name="parent-watchdog").start()
 
     # Start the socket server (blocks in accept loop on background thread)
     receiver.start()
 
     logger.info("Hermes ready. Waiting for connections on %s", args.socket_path)
 
-    # Block main thread — SIGTERM or KeyboardInterrupt will exit.
-    # NSRunLoop must spin on the main thread for NSWorkspace notifications
-    # (app_suppressor, app_monitor) to fire.  Fall back to signal.pause()
-    # when pyobjc is not available (e.g. in CI / non-macOS environments).
-    try:
-        if HAS_APPKIT:
-            AppKit.NSRunLoop.currentRunLoop().run()
-        else:
-            signal.pause()
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt — shutting down")
-        ctrl = _state.get("controller")
-        if ctrl is not None:
-            try:
-                ctrl.stop()
-            except Exception:
-                pass
-        receiver.stop()
+    # Block main thread so NSWorkspace notifications (app_suppressor, app_monitor) fire.
+    # SIGTERM/SIGINT handlers and the parent watchdog handle all exit paths.
+    # Fall back to signal.pause() when pyobjc is not available (CI / non-macOS).
+    if HAS_APPKIT:
+        AppKit.NSRunLoop.currentRunLoop().run()
+    else:
+        signal.pause()
 
 
 if __name__ == "__main__":
